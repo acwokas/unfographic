@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileImage, Settings, Layers } from 'lucide-react';
+import { Upload, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { fileToDataUrl } from '@/lib/image-utils';
 import { createJob } from '@/lib/jobs';
+import Logo from '@/components/Logo';
 
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
 const MAX_SIZE = 20 * 1024 * 1024;
@@ -72,23 +73,20 @@ export default function UploadPage() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Layers className="h-6 w-6 text-primary" />
-          <span className="font-heading text-lg font-bold text-foreground">Slide Deconstructor</span>
-        </div>
-        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity" onClick={() => navigate('/settings')}>
+        <Logo className="text-xl" />
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity rounded-xl" onClick={() => navigate('/settings')}>
           <Settings className="h-4 w-4 mr-1" /> Use your own API key
         </Button>
       </nav>
 
       {/* Hero */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+      <main className="flex-1 flex flex-col items-center justify-center px-6 py-12 hero-gradient">
         <div className="text-center mb-10 max-w-xl">
-          <h1 className="font-heading text-4xl font-bold text-foreground mb-3">
-            Deconstruct any slide
+          <h1 className="font-heading text-5xl font-bold text-foreground mb-3">
+            <span className="text-primary">Un</span>do the infographic
           </h1>
-          <p className="text-muted-foreground text-lg">
-            Upload an infographic or slide image and AI will break it into editable PowerPoint objects.
+          <p className="text-muted-foreground text-lg font-light">
+            Drop a slide image and we'll break it into editable PowerPoint objects. Every text block. Every icon. Freed.
           </p>
         </div>
 
@@ -103,7 +101,7 @@ export default function UploadPage() {
           {isProcessing ? (
             <div className="flex flex-col items-center gap-3">
               <div className="h-10 w-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-              <p className="text-muted-foreground text-sm">Processing file...</p>
+              <p className="text-muted-foreground text-sm">Crunching pixels...</p>
             </div>
           ) : (
             <>
@@ -111,12 +109,12 @@ export default function UploadPage() {
                 <Upload className="h-7 w-7 text-primary" />
               </div>
               <div className="text-center">
-                <p className="font-heading font-semibold text-foreground">Drop your file here</p>
-                <p className="text-muted-foreground text-sm mt-1">or click to browse</p>
+                <p className="font-heading font-semibold text-foreground">Drop your infographic here.</p>
+                <p className="text-muted-foreground text-sm mt-1">We'll take it apart.</p>
               </div>
               <div className="flex gap-2 mt-2">
                 {['PNG', 'JPG', 'WebP', 'PDF'].map((ext) => (
-                  <span key={ext} className="text-xs px-2 py-1 rounded-md bg-secondary text-muted-foreground">
+                  <span key={ext} className="text-xs px-2 py-1 rounded-lg bg-secondary/15 text-accent border border-secondary/30">
                     {ext}
                   </span>
                 ))}
@@ -125,7 +123,7 @@ export default function UploadPage() {
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground mt-4">Max file size: 20MB</p>
+        <p className="text-xs text-muted-foreground mt-4 font-light">Max file size: 20MB</p>
 
         <input
           id="file-input"
