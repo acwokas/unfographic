@@ -34,15 +34,26 @@ export async function runOCR(imageDataUrl: string): Promise<OCRLine[]> {
     }
   }
 
-  // Filter out low-confidence noise
-  return lines.filter(l => l.confidence > 40);
+  // Higher confidence threshold â 60% removes most garbage from icons/decorative elements
+  return lines
+    .filter(l => l.confidence > 60)
+    .filter(l => {
+      // Remove very short fragments that are likely OCR noise
+      const cleaned = l.text.replace(/[^a-zA-Z0-9]/g, '');
+      return cleaned.length >= 2;
+    })
+    .filter(l => {
+      // Remove lines that are mostly symbols/punctuation (icon labels, decorative chars)
+      const alphaNum = l.text.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+      return alphaNum.length >= l.text.trim().length * 0.4;
+    });
 }
 
 /**
  * Group nearby OCR lines into logical text blocks.
  * Lines within verticalGap pixels of each other and horizontally overlapping are merged.
  */
-export function groupOCRLines(lines: OCRLine[], verticalGap = 8): OCRLine[] {
+export function groupOCRLines(lines: OCRLine[], verticalGap = 12): OCRLine[] {
   if (lines.length === 0) return [];
 
   // Sort by Y position
@@ -67,18 +78,32 @@ export function groupOCRLines(lines: OCRLine[], verticalGap = 8): OCRLine[] {
     }
   }
 
-  // Merge each group into a single block
-  return groups.map(group => {
+  // Merge each group into a single block, but split groups that are too tall
+  const merged: OCRLine[] = [];
+  for (const group of groups) {
     const x = Math.min(...group.map(l => l.bbox.x));
     const y = Math.min(...group.map(l => l.bbox.y));
     const x2 = Math.max(...group.map(l => l.bbox.x + l.bbox.width));
     const y2 = Math.max(...group.map(l => l.bbox.y + l.bbox.height));
-    return {
-      text: group.map(l => l.text).join(' '),
-      bbox: { x, y, width: x2 - x, height: y2 - y },
-      confidence: group.reduce((s, l) => s + l.confidence, 0) / group.length,
-    };
-  });
+    const height = y2 - y;
+
+    // If the merged block is very tall compared to individual lines, keep lines separate
+    const avgLineHeight = group.reduce((s, l) => s + l.bbox.height, 0) / group.length;
+    if (group.length > 3 && height > avgLineHeight * 5) {
+      // Too many lines merged â keep each line separate for better positioning
+      for (const line of group) {
+        merged.push(line);
+      }
+    } else {
+      merged.push({
+        text: group.map(l => l.text).join(' '),
+        bbox: { x, y, width: x2 - x, height: y2 - y },
+        confidence: group.reduce((s, l) => s + l.confidence, 0) / group.length,
+      });
+    }
+  }
+
+  return merged;
 }
 
 /**
