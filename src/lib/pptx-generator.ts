@@ -49,9 +49,6 @@ export async function generatePptx(
             align: el.align,
             valign: el.valign,
             fill: el.backgroundColor ? { color: el.backgroundColor.replace('#', '') } : undefined,
-            border: el.borderColor
-              ? [{ color: el.borderColor.replace('#', ''), pt: el.borderWidth || 1, type: 'solid' }]
-              : undefined,
             margin: 0,
           });
           break;
