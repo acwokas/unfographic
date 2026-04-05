@@ -2,6 +2,15 @@ import PptxGenJS from 'pptxgenjs';
 import { LayoutAnalysis } from '@/types/layout';
 import { cropImageRegion } from './image-utils';
 
+function imageToDataUrl(img: HTMLImageElement): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 export async function generatePptx(
   layout: LayoutAnalysis,
   originalImage: HTMLImageElement,
@@ -19,6 +28,20 @@ export async function generatePptx(
   const slide = pptx.addSlide();
   slide.background = { color: layout.slide.backgroundColor || 'FFFFFF' };
 
+  // Add original infographic as full-slide background image for visual reference
+  try {
+    const bgDataUrl = imageToDataUrl(originalImage);
+    slide.addImage({
+      data: bgDataUrl,
+      x: 0,
+      y: 0,
+      w: layout.slide.width,
+      h: layout.slide.height,
+    });
+  } catch (e) {
+    console.warn('Failed to add background image:', e);
+  }
+
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
@@ -34,7 +57,8 @@ export async function generatePptx(
           italic: el.italic,
           align: el.align,
           valign: el.valign || 'top',
-          margin: 0,
+          fill: { color: 'FFFFFF', transparency: 5 },
+          margin: [1, 3, 1, 3],
         });
       } catch (e) {
         console.warn('Failed to add text element:', el.id, e);
