@@ -1,15 +1,18 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, RefreshCw, X, GripVertical } from 'lucide-react';
+import { ArrowLeft, Download, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getJob, updateJob } from '@/lib/jobs';
 import { loadSettings } from '@/lib/settings';
 import { analyzeLayout } from '@/lib/analyze';
-import { resizeImageForApi, loadImage } from '@/lib/image-utils';
+import { resizeImageForApi, loadImage, cropImageRegion } from '@/lib/image-utils';
 import { generatePptx } from '@/lib/pptx-generator';
-import { ConversionJob, LayoutElement } from '@/types/layout';
+import { ConversionJob, LayoutElement, ImageRegionElement } from '@/types/layout';
 import Logo from '@/components/Logo';
+
+// Extend ImageRegionElement with cropped data for preview
+type ProcessedElement = LayoutElement | (ImageRegionElement & { croppedDataUrl?: string });
 
 export default function ConvertPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +22,21 @@ export default function ConvertPage() {
   const [job, setJob] = useState<ConversionJob | undefined>(id ? getJob(id) : undefined);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [croppedImages, setCroppedImages] = useState<Record<string, string>>({});
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(800);
+
+  // Measure canvas width for font scaling
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setCanvasWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, [job?.status]);
 
   useEffect(() => {
     if (!job) {
@@ -30,6 +48,23 @@ export default function ConvertPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Crop image regions once layout + original image are available
+  useEffect(() => {
+    if (!job?.layout || !job.originalImage) return;
+    const imageRegions = job.layout.elements.filter((el): el is ImageRegionElement => el.type === 'image_region');
+    if (imageRegions.length === 0) return;
+
+    const cropped: Record<string, string> = {};
+    for (const region of imageRegions) {
+      try {
+        cropped[region.id] = cropImageRegion(job.originalImage, region.cropBox);
+      } catch {
+        // skip failed crops
+      }
+    }
+    setCroppedImages(cropped);
+  }, [job?.layout, job?.originalImage]);
 
   const runAnalysis = useCallback(async () => {
     if (!job || !id) return;
@@ -86,6 +121,9 @@ export default function ConvertPage() {
 
   const slideW = job.layout?.slide.width || 10;
   const slideH = job.layout?.slide.height || 5.625;
+  // Scale factor: convert points to preview pixels
+  // Points are 1/72 of an inch; scale = containerPx / (slideInches * 72)
+  const fontScale = canvasWidth / (slideW * 72);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -150,28 +188,110 @@ export default function ConvertPage() {
 
             {job.status === 'ready' && job.layout && (
               <div
-                className="canvas-container relative w-full"
+                ref={canvasRef}
+                className="relative w-full rounded-xl overflow-hidden border border-border"
                 style={{
-                  maxWidth: '100%',
                   aspectRatio: `${slideW} / ${slideH}`,
-                  backgroundColor: job.layout.slide.backgroundColor ? `#${job.layout.slide.backgroundColor}` : '#ffffff',
+                  backgroundColor: job.layout.slide.backgroundColor
+                    ? `#${job.layout.slide.backgroundColor}`
+                    : '#ffffff',
                 }}
                 onClick={() => { setSelectedId(null); setEditingId(null); }}
               >
-                {job.layout.elements.map((el) => (
-                  <ElementOverlay
-                    key={el.id}
-                    element={el}
-                    slideWidth={slideW}
-                    slideHeight={slideH}
-                    isSelected={selectedId === el.id}
-                    isEditing={editingId === el.id}
-                    onSelect={(e) => { e.stopPropagation(); setSelectedId(el.id); setEditingId(null); }}
-                    onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text') setEditingId(el.id); }}
-                    onDelete={() => handleDelete(el.id)}
-                    onEditText={(text) => handleEditText(el.id, text)}
-                  />
-                ))}
+                {job.layout.elements.map((el) => {
+                  const left = `${(el.x / slideW) * 100}%`;
+                  const top = `${(el.y / slideH) * 100}%`;
+                  const width = `${(el.w / slideW) * 100}%`;
+                  const height = `${(el.h / slideH) * 100}%`;
+                  const isSelected_ = selectedId === el.id;
+                  const isEditing_ = editingId === el.id;
+
+                  return (
+                    <div
+                      key={el.id}
+                      className={`absolute group ${isSelected_ ? 'outline outline-2 outline-primary outline-offset-1' : ''}`}
+                      style={{ left, top, width, height }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); if (editingId !== el.id) setEditingId(null); }}
+                      onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text') setEditingId(el.id); }}
+                    >
+                      {/* Text element */}
+                      {el.type === 'text' && !isEditing_ && (
+                        <div
+                          className="w-full h-full overflow-hidden cursor-text hover:outline-dashed hover:outline-1 hover:outline-secondary/50"
+                          style={{
+                            fontSize: `${Math.max(6, el.fontSize * fontScale)}px`,
+                            fontWeight: el.bold ? 700 : 400,
+                            fontStyle: el.italic ? 'italic' : 'normal',
+                            color: el.fontColor ? `#${el.fontColor}` : '#000',
+                            textAlign: el.align,
+                            display: 'flex',
+                            alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',
+                            backgroundColor: el.backgroundColor ? `#${el.backgroundColor}` : 'transparent',
+                            lineHeight: 1.2,
+                            wordBreak: 'break-word',
+                            padding: '1px 2px',
+                          }}
+                        >
+                          <span className="w-full">{el.content}</span>
+                        </div>
+                      )}
+
+                      {el.type === 'text' && isEditing_ && (
+                        <textarea
+                          autoFocus
+                          defaultValue={el.content}
+                          onBlur={(e) => { handleEditText(el.id, e.target.value); setEditingId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full h-full bg-transparent resize-none outline-none border-2 border-primary rounded"
+                          style={{
+                            fontSize: `${Math.max(6, el.fontSize * fontScale)}px`,
+                            fontWeight: el.bold ? 700 : 400,
+                            color: el.fontColor ? `#${el.fontColor}` : '#000',
+                            lineHeight: 1.2,
+                            padding: '1px 2px',
+                          }}
+                        />
+                      )}
+
+                      {/* Image region — show cropped image */}
+                      {el.type === 'image_region' && (
+                        croppedImages[el.id] ? (
+                          <img
+                            src={croppedImages[el.id]}
+                            alt={el.description}
+                            className="w-full h-full object-contain"
+                            draggable={false}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-secondary/10 flex items-center justify-center rounded">
+                            <span className="text-[9px] text-muted-foreground truncate px-1">{el.description}</span>
+                          </div>
+                        )
+                      )}
+
+                      {/* Shape */}
+                      {el.type === 'shape' && (
+                        <div
+                          className="w-full h-full"
+                          style={{
+                            backgroundColor: el.fillColor ? `#${el.fillColor}` : 'transparent',
+                            border: el.borderColor ? `${el.borderWidth || 1}px solid #${el.borderColor}` : 'none',
+                            borderRadius: el.shapeType === 'ellipse' ? '50%' : el.shapeType === 'roundRect' ? '8px' : '0',
+                            transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                          }}
+                        />
+                      )}
+
+                      {/* Delete button */}
+                      <button
+                        className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground hidden group-hover:flex items-center justify-center text-xs z-10"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(el.id); }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -191,94 +311,6 @@ export default function ConvertPage() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function ElementOverlay({
-  element,
-  slideWidth,
-  slideHeight,
-  isSelected,
-  isEditing,
-  onSelect,
-  onDoubleClick,
-  onDelete,
-  onEditText,
-}: {
-  element: LayoutElement;
-  slideWidth: number;
-  slideHeight: number;
-  isSelected: boolean;
-  isEditing: boolean;
-  onSelect: (e: React.MouseEvent) => void;
-  onDoubleClick: (e: React.MouseEvent) => void;
-  onDelete: () => void;
-  onEditText: (text: string) => void;
-}) {
-  const left = `${(element.x / slideWidth) * 100}%`;
-  const top = `${(element.y / slideHeight) * 100}%`;
-  const width = `${(element.w / slideWidth) * 100}%`;
-  const height = `${(element.h / slideHeight) * 100}%`;
-
-  return (
-    <div
-      className={`element-preview absolute group ${isSelected ? 'element-preview-selected' : ''}`}
-      style={{ left, top, width, height }}
-      onClick={onSelect}
-      onDoubleClick={onDoubleClick}
-    >
-      {element.type === 'text' && !isEditing && (
-        <div
-          className="w-full h-full flex overflow-hidden px-1"
-          style={{
-            fontSize: `clamp(6px, ${(element.fontSize / slideHeight) * 100}vh, 24px)`,
-            fontWeight: element.bold ? 'bold' : 'normal',
-            fontStyle: element.italic ? 'italic' : 'normal',
-            color: element.fontColor ? `#${element.fontColor}` : '#000',
-            textAlign: element.align,
-            alignItems: element.valign === 'top' ? 'flex-start' : element.valign === 'bottom' ? 'flex-end' : 'center',
-            backgroundColor: element.backgroundColor ? `#${element.backgroundColor}` : 'transparent',
-          }}
-        >
-          <span className="w-full leading-tight">{element.content}</span>
-        </div>
-      )}
-
-      {element.type === 'text' && isEditing && (
-        <textarea
-          className="w-full h-full p-1 bg-card text-foreground border-2 border-primary resize-none text-xs focus:outline-none rounded-lg"
-          defaultValue={element.content}
-          autoFocus
-          onBlur={(e) => onEditText(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-        />
-      )}
-
-      {element.type === 'image_region' && (
-        <div className="w-full h-full bg-secondary/10 flex items-center justify-center rounded-lg">
-          <GripVertical className="h-4 w-4 text-accent/60" />
-          <span className="text-[10px] text-muted-foreground ml-1 truncate max-w-[80%]">{element.description}</span>
-        </div>
-      )}
-
-      {element.type === 'shape' && (
-        <div
-          className="w-full h-full"
-          style={{
-            backgroundColor: element.fillColor ? `#${element.fillColor}` : 'transparent',
-            border: element.borderColor ? `${element.borderWidth || 1}px solid #${element.borderColor}` : 'none',
-            borderRadius: element.shapeType === 'ellipse' ? '50%' : element.shapeType === 'roundRect' ? '8px' : '0',
-          }}
-        />
-      )}
-
-      <button
-        className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground hidden group-hover:flex items-center justify-center text-xs z-10"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-      >
-        <X className="h-3 w-3" />
-      </button>
     </div>
   );
 }
