@@ -76,8 +76,8 @@ export default function UploadPage() {
           <Layers className="h-6 w-6 text-primary" />
           <span className="font-heading text-lg font-bold text-foreground">Slide Deconstructor</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
-          <Settings className="h-5 w-5" />
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity" onClick={() => navigate('/settings')}>
+          <Settings className="h-4 w-4 mr-1" /> Use your own API key
         </Button>
       </nav>
 
