@@ -59,7 +59,7 @@ export function buildSlideLayout(
 
   // Process text blocks
   for (const t of (aiResponse.textBlocks || [])) {
-    const fs = typeFontSize[t.type] || 10;
+    let fs = typeFontSize[t.type] || 10;
     let x: number, y: number, w: number, h: number;
     let anchored = false;
 
@@ -72,9 +72,13 @@ export function buildSlideLayout(
       w = Math.max(w, 0.5);
       h = Math.max(h, 0.18);
 
+      // Derive font size from bounding box height (inches -> points)
+      fs = Math.round(h * 72 * 0.85);
+      fs = Math.max(6, Math.min(fs, 48));
+
       // Padding to fully cover original text
-      const padX = 0.08;
-      const padY = 0.04;
+      const padX = 0.06;
+      const padY = 0.03;
       x = Math.max(MARGIN, x - padX);
       y = Math.max(0.05, y - padY);
       w = w + padX * 2;
