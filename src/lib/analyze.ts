@@ -4,7 +4,9 @@ import { AppSettings } from '@/types/layout';
 
 export async function analyzeLayout(
   imageBase64: string,
-  settings: AppSettings
+  settings: AppSettings,
+  imageWidth?: number,
+  imageHeight?: number
 ): Promise<LayoutAnalysis> {
   const { data, error } = await supabase.functions.invoke('analyze-layout', {
     body: {
@@ -13,6 +15,8 @@ export async function analyzeLayout(
       model: settings.model,
       api_key: settings.apiKey,
       slide_size: settings.slideSize,
+      image_width: imageWidth,
+      image_height: imageHeight,
     },
   });
 
