@@ -50,7 +50,8 @@ export default function ConvertPage() {
       const base64 = resized.split(',')[1];
       const img = await loadImage(job.imageDataUrl);
 
-      const aiResponse = await analyzeLayout(base64, settings, img.naturalWidth, img.naturalHeight);
+      const scale = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight));
+      const aiResponse = await analyzeLayout(base64, settings, Math.round(img.naturalWidth * scale), Math.round(img.naturalHeight * scale));
       const layout = buildSlideLayout(aiResponse, img);
 
       updateJob(id, { status: 'ready', layout, originalImage: img });
