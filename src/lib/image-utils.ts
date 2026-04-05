@@ -35,7 +35,8 @@ export async function resizeImageForApi(dataUrl: string, maxSize = 2048): Promis
       canvas.height = h;
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/png'));
+      // Use JPEG at 0.8 quality to keep payload under edge function limits
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
     img.src = dataUrl;
   });
