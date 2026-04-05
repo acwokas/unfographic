@@ -6,13 +6,10 @@ import { useToast } from '@/hooks/use-toast';
 import { getJob, updateJob } from '@/lib/jobs';
 import { loadSettings } from '@/lib/settings';
 import { analyzeLayout } from '@/lib/analyze';
-import { resizeImageForApi, loadImage, cropImageRegion } from '@/lib/image-utils';
+import { resizeImageForApi, loadImage } from '@/lib/image-utils';
 import { generatePptx } from '@/lib/pptx-generator';
-import { ConversionJob, LayoutElement, ImageRegionElement } from '@/types/layout';
+import { ConversionJob } from '@/types/layout';
 import Logo from '@/components/Logo';
-
-// Extend ImageRegionElement with cropped data for preview
-type ProcessedElement = LayoutElement | (ImageRegionElement & { croppedDataUrl?: string });
 
 export default function ConvertPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,7 +19,6 @@ export default function ConvertPage() {
   const [job, setJob] = useState<ConversionJob | undefined>(id ? getJob(id) : undefined);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [croppedImages, setCroppedImages] = useState<Record<string, string>>({});
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(800);
 
@@ -48,23 +44,6 @@ export default function ConvertPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Crop image regions once layout + original image are available
-  useEffect(() => {
-    if (!job?.layout || !job.originalImage) return;
-    const imageRegions = job.layout.elements.filter((el): el is ImageRegionElement => el.type === 'image_region');
-    if (imageRegions.length === 0) return;
-
-    const cropped: Record<string, string> = {};
-    for (const region of imageRegions) {
-      try {
-        cropped[region.id] = cropImageRegion(job.originalImage, region.cropBox);
-      } catch {
-        // skip failed crops
-      }
-    }
-    setCroppedImages(cropped);
-  }, [job?.layout, job?.originalImage]);
 
   const runAnalysis = useCallback(async () => {
     if (!job || !id) return;
@@ -121,8 +100,7 @@ export default function ConvertPage() {
 
   const slideW = job.layout?.slide.width || 10;
   const slideH = job.layout?.slide.height || 5.625;
-  // Scale factor: convert points to preview pixels
-  // Points are 1/72 of an inch; scale = containerPx / (slideInches * 72)
+  // Font scale: container pixels / (slide inches * 72 points per inch)
   const fontScale = canvasWidth / (slideW * 72);
 
   return (
@@ -158,7 +136,7 @@ export default function ConvertPage() {
             </h2>
             {job.layout && (
               <span className="text-xs text-muted-foreground font-light">
-                {job.layout.elements.length} elements found
+                {job.layout.elements.filter(el => el.type === 'text').length} text overlays
               </span>
             )}
           </div>
@@ -190,15 +168,20 @@ export default function ConvertPage() {
               <div
                 ref={canvasRef}
                 className="relative w-full rounded-xl overflow-hidden border border-border"
-                style={{
-                  aspectRatio: `${slideW} / ${slideH}`,
-                  backgroundColor: job.layout.slide.backgroundColor
-                    ? `#${job.layout.slide.backgroundColor}`
-                    : '#ffffff',
-                }}
+                style={{ aspectRatio: `${slideW} / ${slideH}` }}
                 onClick={() => { setSelectedId(null); setEditingId(null); }}
               >
-                {job.layout.elements.map((el) => {
+                {/* Layer 1: Background image (the original infographic) */}
+                <img
+                  src={job.imageDataUrl}
+                  alt="Background"
+                  className="absolute inset-0 w-full h-full object-contain"
+                  draggable={false}
+                />
+
+                {/* Layer 2: Editable text overlays */}
+                {job.layout.elements.filter(el => el.type === 'text').map((el) => {
+                  if (el.type !== 'text') return null;
                   const left = `${(el.x / slideW) * 100}%`;
                   const top = `${(el.y / slideH) * 100}%`;
                   const width = `${(el.w / slideW) * 100}%`;
@@ -212,12 +195,11 @@ export default function ConvertPage() {
                       className={`absolute group ${isSelected_ ? 'outline outline-2 outline-primary outline-offset-1' : ''}`}
                       style={{ left, top, width, height }}
                       onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); if (editingId !== el.id) setEditingId(null); }}
-                      onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text') setEditingId(el.id); }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setEditingId(el.id); }}
                     >
-                      {/* Text element */}
-                      {el.type === 'text' && !isEditing_ && (
+                      {!isEditing_ ? (
                         <div
-                          className="w-full h-full overflow-hidden cursor-text hover:outline-dashed hover:outline-1 hover:outline-secondary/50"
+                          className="w-full h-full overflow-hidden cursor-text hover:outline-dashed hover:outline-1 hover:outline-primary/60"
                           style={{
                             fontSize: `${Math.max(6, el.fontSize * fontScale)}px`,
                             fontWeight: el.bold ? 700 : 400,
@@ -226,7 +208,6 @@ export default function ConvertPage() {
                             textAlign: el.align,
                             display: 'flex',
                             alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',
-                            backgroundColor: el.backgroundColor ? `#${el.backgroundColor}` : 'transparent',
                             lineHeight: 1.2,
                             wordBreak: 'break-word',
                             padding: '1px 2px',
@@ -234,9 +215,7 @@ export default function ConvertPage() {
                         >
                           <span className="w-full">{el.content}</span>
                         </div>
-                      )}
-
-                      {el.type === 'text' && isEditing_ && (
+                      ) : (
                         <textarea
                           autoFocus
                           defaultValue={el.content}
@@ -249,35 +228,6 @@ export default function ConvertPage() {
                             color: el.fontColor ? `#${el.fontColor}` : '#000',
                             lineHeight: 1.2,
                             padding: '1px 2px',
-                          }}
-                        />
-                      )}
-
-                      {/* Image region — show cropped image */}
-                      {el.type === 'image_region' && (
-                        croppedImages[el.id] ? (
-                          <img
-                            src={croppedImages[el.id]}
-                            alt={el.description}
-                            className="w-full h-full object-contain"
-                            draggable={false}
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-secondary/10 flex items-center justify-center rounded">
-                            <span className="text-[9px] text-muted-foreground truncate px-1">{el.description}</span>
-                          </div>
-                        )
-                      )}
-
-                      {/* Shape */}
-                      {el.type === 'shape' && (
-                        <div
-                          className="w-full h-full"
-                          style={{
-                            backgroundColor: el.fillColor ? `#${el.fillColor}` : 'transparent',
-                            border: el.borderColor ? `${el.borderWidth || 1}px solid #${el.borderColor}` : 'none',
-                            borderRadius: el.shapeType === 'ellipse' ? '50%' : el.shapeType === 'roundRect' ? '8px' : '0',
-                            transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                           }}
                         />
                       )}

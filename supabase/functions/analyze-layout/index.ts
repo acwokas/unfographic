@@ -3,100 +3,94 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `You are a precision layout analysis engine. Your job is to deconstruct infographic images into individual, editable PowerPoint components.
+const SYSTEM_PROMPT = `You are a precision layout analysis engine. Your job is to deconstruct infographic images into editable PowerPoint components.
 
-TASK:
-Analyze the provided image and return a JSON structure that precisely maps every visual element — text blocks, icons, diagrams, decorative shapes, and visual regions — to coordinates on a standard PowerPoint slide.
+STRATEGY — USE A LAYERED APPROACH:
+
+1. FIRST: Place the ENTIRE original image as a single full-slide background image region
+2. THEN: Extract ONLY the text elements as overlays on top, so users can edit the copy
+
+This means every infographic gets deconstructed as:
+- One full-bleed background image (the original infographic)
+- Multiple editable text boxes positioned precisely over where text appears in the image
+
+Users can then: edit any text, delete text boxes they don't need, or delete the background and keep only the text.
 
 COORDINATE SYSTEM:
-- All x, y, w, h values are in INCHES
-- Origin (0,0) is the top-left corner
-- Be extremely precise with positioning — elements should reconstruct the original layout faithfully
+- All x, y, w, h values in INCHES
+- Origin (0,0) is top-left
+- Be precise — text boxes must sit exactly over the text in the background image
 
-RULES FOR ELEMENT EXTRACTION:
+RULES:
 
-1. TEXT ELEMENTS:
-   - Extract EVERY piece of text as a separate text element
-   - Group text that belongs together (e.g., a heading + subheading in one box) only if they share the same visual container
-   - Estimate font size in points based on visual proportions (title ~28-36pt, body ~12-16pt, captions ~9-11pt)
-   - Detect font weight (bold/not bold) and style (italic/not italic)
-   - Identify text color as hex WITHOUT # prefix (e.g., "FFFFFF")
-   - Identify text alignment (left, center, right)
-   - If text sits on a colored background box, include backgroundColor
+1. BACKGROUND IMAGE:
+   - Always include exactly ONE image_region element with id "background"
+   - Its cropBox covers the entire image: { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT }
+   - Placement fills the full slide
 
-2. IMAGE REGIONS:
-   - Identify distinct visual areas: icons, illustrations, photos, diagrams, charts, logos
-   - For each, provide a cropBox in PIXEL coordinates relative to the original image dimensions
-   - The cropBox should tightly bound the visual element with ~5px padding
-   - Also provide the placement coordinates (x, y, w, h) in inches for where this region sits on the slide
-   - Write a brief description of what the region contains
+2. TEXT ELEMENTS:
+   - Extract every readable text string as a separate text element
+   - Position each text box EXACTLY over where that text appears in the background
+   - Size the text box to tightly fit the text (not too wide, not too tall)
+   - Estimate font size carefully based on visual proportions
+   - Group a heading with its immediate subtext ONLY if they're visually a single block
+   - For bullet lists, keep each bullet as a separate text element
 
-3. SHAPE ELEMENTS:
-   - Identify background shapes, dividers, arrows, connectors, and decorative elements
-   - Map each to the closest PowerPoint shape: rect, roundRect, ellipse, line, arrow
-   - Include fill color and border color where visible
+3. DO NOT:
+   - Do NOT create multiple image_region elements for individual icons, diagrams, or illustrations
+   - Do NOT create shape elements (the background image already contains them)
+   - Do NOT duplicate — if text is in the background image, the text overlay is the editable version
 
-4. LAYERING:
-   - Return elements in back-to-front order (background shapes first, then images, then text on top)
-   - This ensures proper z-ordering in PowerPoint
+4. ELEMENT ORDER:
+   - First element: the background image_region
+   - Remaining elements: text overlays, ordered top-to-bottom, left-to-right
 
-5. BACKGROUND:
-   - Identify the overall slide background color
-   - If the background is a gradient or image, set backgroundColor to the dominant color
+5. TEXT STYLING:
+   - Match font color to what's visible in the image
+   - Set backgroundColor to null (text floats over the background image)
+   - Bold for headings and emphasis
+   - Use fontFace "Arial" as default
 
 OUTPUT FORMAT:
-Return ONLY valid JSON matching this exact structure (no markdown, no explanation, no code fences):
+Return ONLY valid JSON (no markdown, no code fences, no explanation):
 
 {
   "slide": {
     "width": 10,
     "height": 5.625,
-    "backgroundColor": "HEXCOLOR"
+    "backgroundColor": "FFFFFF"
   },
   "elements": [
     {
-      "type": "shape",
-      "id": "bg-shape-1",
-      "shapeType": "rect",
-      "x": 0, "y": 0, "w": 10, "h": 2,
-      "fillColor": "1A1A2E",
-      "borderColor": null,
-      "borderWidth": 0,
-      "rotation": 0
-    },
-    {
       "type": "image_region",
-      "id": "icon-1",
-      "description": "Brain/AI neural network illustration",
-      "cropBox": { "x": 450, "y": 200, "width": 300, "height": 280 },
-      "x": 3.5, "y": 1.2, "w": 2.5, "h": 2.3
+      "id": "background",
+      "description": "Full infographic background",
+      "cropBox": { "x": 0, "y": 0, "width": ORIGINAL_WIDTH, "height": ORIGINAL_HEIGHT },
+      "x": 0, "y": 0, "w": 10, "h": 5.625
     },
     {
       "type": "text",
-      "id": "title-1",
+      "id": "title-main",
       "content": "The Modern Agency Operating System",
-      "x": 0.5, "y": 0.3, "w": 6, "h": 0.8,
-      "fontSize": 28,
+      "x": 0.3, "y": 0.2, "w": 5.5, "h": 0.7,
+      "fontSize": 22,
       "fontFace": "Arial",
       "fontColor": "1A1A2E",
       "bold": true,
       "italic": false,
       "align": "left",
       "valign": "top",
-      "backgroundColor": null,
-      "borderColor": null,
-      "borderWidth": 0
+      "backgroundColor": null
     }
   ]
 }
 
-CRITICAL NOTES:
-- Return ONLY the JSON. No markdown fences. No explanatory text.
-- Every color value should be hex WITHOUT the # prefix (PowerPoint convention)
-- Ensure cropBox coordinates are in PIXELS relative to the original image dimensions
-- Be thorough: miss nothing. Every text block, every icon, every decorative element.
-- IDs should be descriptive: "title-main", "subtitle-1", "icon-brain", "arrow-flow-1", etc.
-- For complex diagrams with embedded text, extract the text as separate text elements overlaying the diagram image region`;
+CRITICAL:
+- Every color hex WITHOUT the # prefix
+- Only ONE image_region (the full background)
+- All other elements are type "text" only
+- Be thorough: extract ALL visible text, even small captions and labels
+- IDs should be descriptive: "title-main", "section-header-1", "label-crm", "caption-bottom-left"`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -106,7 +100,6 @@ Deno.serve(async (req) => {
   try {
     const { image_base64, provider: reqProvider, model: reqModel, api_key: reqApiKey, slide_size, image_width, image_height } = await req.json();
 
-    // Use request values or fall back to server defaults
     let provider = reqProvider || 'openai';
     let model = reqModel || (provider === 'openai' ? 'gpt-4o' : provider === 'anthropic' ? 'claude-sonnet-4-20250514' : '');
 
@@ -136,11 +129,10 @@ Deno.serve(async (req) => {
     const slideH = slide_size === '4:3' ? 7.5 : 5.625;
     const sizeHint = `Slide dimensions: ${slideW}" x ${slideH}" (${slide_size || '16:9'} aspect ratio).`;
     const dimHint = image_width && image_height
-      ? `The original image dimensions are ${image_width}px × ${image_height}px.`
+      ? `The original image dimensions are ${image_width}px × ${image_height}px. Use these exact values for the background cropBox.`
       : '';
 
-    const userMessage = `Analyze this infographic image and return the layout JSON. ${dimHint} ${sizeHint} Deconstruct every element for PowerPoint reconstruction.`;
-    const fullSystemPrompt = SYSTEM_PROMPT;
+    const userMessage = `Analyze this infographic image and return the layout JSON. ${dimHint} ${sizeHint} Extract the full image as background and all text as overlays.`;
 
     let result: string | null = null;
 
@@ -151,7 +143,7 @@ Deno.serve(async (req) => {
       const body: Record<string, unknown> = {
         model: mdl,
         messages: [
-          { role: 'system', content: fullSystemPrompt },
+          { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: [
             { type: 'text', text: userMessage },
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image_base64}` } },
@@ -186,7 +178,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: mdl,
           max_tokens: 8000,
-          system: fullSystemPrompt,
+          system: SYSTEM_PROMPT,
           messages: [{ role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_base64 } },
             { type: 'text', text: userMessage },
@@ -209,19 +201,16 @@ Deno.serve(async (req) => {
       return { ok: false, error: `Unknown provider: ${p}` };
     }
 
-    // Try primary provider with 1 retry (skip retry for auth errors)
     let lastError = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await callProvider(provider, api_key, model);
       if (res.ok && res.result) { result = res.result; break; }
       lastError = res.error || 'Unknown error';
       console.warn(`Attempt ${attempt + 1} with ${provider} failed: ${lastError}`);
-      // Don't retry on auth errors (401) — key is simply invalid
       if (lastError.includes('(401)')) break;
       if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
     }
 
-    // Fallback: try a different provider with server key if primary failed
     if (!result) {
       const fallbackProvider = provider === 'openai' ? 'anthropic' : 'openai';
       const fallbackKey = getKeyForProvider(fallbackProvider);
@@ -244,7 +233,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Parse JSON from response — handle markdown code fences if AI wraps them
     let cleaned = result.trim();
     if (cleaned.startsWith('```')) {
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
@@ -261,7 +249,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Basic validation
     if (!layout.slide || !Array.isArray(layout.elements)) {
       return new Response(JSON.stringify({ error: 'AI response missing slide or elements fields. Try re-analyzing.' }), {
         status: 502,
