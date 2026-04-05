@@ -5,16 +5,32 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { fileToDataUrl } from '@/lib/image-utils';
 import { createJob } from '@/lib/jobs';
+import { loadSettings, saveSettings } from '@/lib/settings';
 import Logo from '@/components/Logo';
 
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
 const MAX_SIZE = 20 * 1024 * 1024;
 
+const providers = [
+  { value: 'openai' as const, label: 'OpenAI' },
+  { value: 'anthropic' as const, label: 'Claude' },
+];
+
 export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<'openai' | 'anthropic'>(() => {
+    const s = loadSettings();
+    return s.provider === 'anthropic' ? 'anthropic' : 'openai';
+  });
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleProviderSwitch = (provider: 'openai' | 'anthropic') => {
+    setActiveProvider(provider);
+    const current = loadSettings();
+    saveSettings({ ...current, provider });
+  };
 
   const processFile = useCallback(async (file: File) => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -74,9 +90,27 @@ export default function UploadPage() {
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-border">
         <Logo className="text-xl" />
-        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity rounded-xl" onClick={() => navigate('/settings')}>
-          <Settings className="h-4 w-4 mr-1" /> Use your own API key
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Provider toggle */}
+          <div className="flex items-center rounded-xl border border-secondary/20 bg-card p-0.5">
+            {providers.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => handleProviderSwitch(p.value)}
+                className={`px-3 py-1.5 text-xs font-heading font-medium rounded-lg transition-all ${
+                  activeProvider === p.value
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity rounded-xl" onClick={() => navigate('/settings')}>
+            <Settings className="h-4 w-4 mr-1" /> Settings
+          </Button>
+        </div>
       </nav>
 
       {/* Hero */}
