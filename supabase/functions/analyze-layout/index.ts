@@ -104,10 +104,22 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { image_base64, provider, model, api_key, slide_size, image_width, image_height } = await req.json();
+    const { image_base64, provider: reqProvider, model: reqModel, api_key: reqApiKey, slide_size, image_width, image_height } = await req.json();
 
-    if (!image_base64 || !provider || !model || !api_key) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: image_base64, provider, model, api_key' }), {
+    // Use request values or fall back to server defaults
+    const provider = reqProvider || 'openai';
+    const model = reqModel || 'gpt-4o';
+    const api_key = reqApiKey || (provider === 'openai' ? Deno.env.get('OPENAI_API_KEY') : '') || '';
+
+    if (!image_base64) {
+      return new Response(JSON.stringify({ error: 'Missing required field: image_base64' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!api_key) {
+      return new Response(JSON.stringify({ error: 'No API key provided and no server default configured.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
