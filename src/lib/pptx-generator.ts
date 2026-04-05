@@ -17,44 +17,42 @@ export async function generatePptx(
   pptx.layout = 'CUSTOM';
 
   const slide = pptx.addSlide();
+  slide.background = { color: layout.slide.backgroundColor || 'FFFFFF' };
 
-  // Layer 1: Full background image from the original
-  const bgCanvas = document.createElement('canvas');
-  bgCanvas.width = originalImage.naturalWidth;
-  bgCanvas.height = originalImage.naturalHeight;
-  const bgCtx = bgCanvas.getContext('2d')!;
-  bgCtx.drawImage(originalImage, 0, 0);
-  const bgDataUrl = bgCanvas.toDataURL('image/jpeg', 0.92);
-
-  slide.addImage({
-    data: bgDataUrl,
-    x: 0,
-    y: 0,
-    w: layout.slide.width,
-    h: layout.slide.height,
-  });
-
-  // Layer 2: Text overlays
   for (const el of layout.elements) {
-    if (el.type !== 'text') continue;
-    try {
-      slide.addText(el.content, {
-        x: el.x,
-        y: el.y,
-        w: el.w,
-        h: el.h,
-        fontSize: el.fontSize,
-        fontFace: el.fontFace || 'Arial',
-        color: el.fontColor?.replace('#', ''),
-        bold: el.bold,
-        italic: el.italic,
-        align: el.align,
-        valign: el.valign || 'middle',
-        margin: [2, 4, 2, 4],
-        fill: { color: el.backgroundColor || 'FFFFFF' },
-      });
-    } catch (e) {
-      console.warn('Failed to add text element:', el.id, e);
+    if (el.type === 'text') {
+      try {
+        slide.addText(el.content, {
+          x: el.x,
+          y: el.y,
+          w: el.w,
+          h: el.h,
+          fontSize: el.fontSize,
+          fontFace: el.fontFace || 'Arial',
+          color: el.fontColor?.replace('#', ''),
+          bold: el.bold,
+          italic: el.italic,
+          align: el.align,
+          valign: el.valign || 'top',
+          margin: 0,
+        });
+      } catch (e) {
+        console.warn('Failed to add text element:', el.id, e);
+      }
+    } else if (el.type === 'image_region') {
+      try {
+        // Use pre-cropped data URL if available, otherwise crop now
+        const dataUrl = el.croppedDataUrl || cropImageRegion(originalImage, el.cropBox);
+        slide.addImage({
+          data: dataUrl,
+          x: el.x,
+          y: el.y,
+          w: el.w,
+          h: el.h,
+        });
+      } catch (e) {
+        console.warn('Failed to add image region:', el.id, e);
+      }
     }
   }
 
