@@ -22,13 +22,12 @@ function sampleRegionColor(img: HTMLImageElement, x: number, y: number, w: numbe
     const ctx = canvas.getContext('2d')!;
     ctx.drawImage(img, 0, 0);
 
-    // Convert slide inches to pixel coordinates
     const px = Math.round((x / slideW) * img.naturalWidth);
     const py = Math.round((y / slideH) * img.naturalHeight);
     const pw = Math.max(1, Math.round((w / slideW) * img.naturalWidth));
     const ph = Math.max(1, Math.round((h / slideH) * img.naturalHeight));
 
-    // Sample a few pixels around the edges of the region
+    // Sample edges and center
     const samples: number[][] = [];
     const samplePoints = [
       [px + 2, py + 2],
@@ -45,7 +44,6 @@ function sampleRegionColor(img: HTMLImageElement, x: number, y: number, w: numbe
       samples.push([pixel[0], pixel[1], pixel[2]]);
     }
 
-    // Average the samples
     const avg = samples.reduce(
       (acc, s) => [acc[0] + s[0], acc[1] + s[1], acc[2] + s[2]],
       [0, 0, 0]
@@ -54,6 +52,23 @@ function sampleRegionColor(img: HTMLImageElement, x: number, y: number, w: numbe
     return avg.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
   } catch {
     return 'FFFFFF';
+  }
+}
+
+/**
+ * Choose text color (black or white) based on background luminance.
+ * Ensures text is always readable against its cover rectangle.
+ */
+function contrastTextColor(bgHex: string): string {
+  try {
+    const r = parseInt(bgHex.slice(0, 2), 16);
+    const g = parseInt(bgHex.slice(2, 4), 16);
+    const b = parseInt(bgHex.slice(4, 6), 16);
+    // Standard luminance formula
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return lum < 140 ? 'FFFFFF' : '000000';
+  } catch {
+    return '000000';
   }
 }
 
@@ -74,7 +89,7 @@ export async function generatePptx(
   const slide = pptx.addSlide();
   slide.background = { color: layout.slide.backgroundColor || 'FFFFFF' };
 
-  // Layer 1: Add original infographic as full-slide background image
+  // Layer 1: Original infographic as full-slide background
   try {
     const bgDataUrl = imageToDataUrl(originalImage);
     slide.addImage({
@@ -88,25 +103,31 @@ export async function generatePptx(
     console.warn('Failed to add background image:', e);
   }
 
-  // Layer 2: Add cover rectangles behind each text element to hide original text
+  // Layer 2: Cover rectangles to hide original text behind editable text.
+  // Slightly expanded to ensure full coverage.
+  const coverColors: Record<string, string> = {};
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
-        // Sample the background color at this position for a matching cover
+        const expand = 0.02; // extra padding around cover
+        const cx = Math.max(0, el.x - expand);
+        const cy = Math.max(0, el.y - expand);
+        const cw = el.w + expand * 2;
+        const ch = el.h + expand * 2;
         const coverColor = sampleRegionColor(
-          originalImage, el.x, el.y, el.w, el.h,
+          originalImage, cx, cy, cw, ch,
           layout.slide.width, layout.slide.height
         );
+        coverColors[el.id] = coverColor;
         slide.addShape('rect' as any, {
-          x: el.x,
-          y: el.y,
-          w: el.w,
-          h: el.h,
+          x: cx,
+          y: cy,
+          w: cw,
+          h: ch,
           fill: { color: coverColor },
           line: { color: coverColor, width: 0 },
         });
       } catch (e) {
-        // Fallback: white rectangle
         slide.addShape('rect' as any, {
           x: el.x,
           y: el.y,
@@ -115,14 +136,19 @@ export async function generatePptx(
           fill: { color: 'FFFFFF' },
           line: { color: 'FFFFFF', width: 0 },
         });
+        coverColors[el.id] = 'FFFFFF';
       }
     }
   }
 
-  // Layer 3: Add text elements on top of cover rectangles
+  // Layer 3: Editable text on top of cover rectangles
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
+        // Pick text color that contrasts with the cover rectangle
+        const bgColor = coverColors[el.id] || 'FFFFFF';
+        const textColor = contrastTextColor(bgColor);
+
         slide.addText(el.content, {
           x: el.x,
           y: el.y,
@@ -130,13 +156,13 @@ export async function generatePptx(
           h: el.h,
           fontSize: el.fontSize,
           fontFace: el.fontFace || 'Arial',
-          color: el.fontColor?.replace('#', ''),
+          color: textColor,
           bold: el.bold,
           italic: el.italic,
           align: el.align,
           valign: el.valign || 'top',
           margin: [0, 2, 0, 2],
-          // No fill on text â the cover rectangle behind handles the background
+          autoFit: true,
         });
       } catch (e) {
         console.warn('Failed to add text element:', el.id, e);
