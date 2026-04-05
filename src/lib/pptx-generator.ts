@@ -1,5 +1,5 @@
 import PptxGenJS from 'pptxgenjs';
-import { LayoutAnalysis, LayoutElement } from '@/types/layout';
+import { LayoutAnalysis } from '@/types/layout';
 import { cropImageRegion } from './image-utils';
 
 function mapShapeType(shapeType: string): keyof typeof PptxGenJS.ShapeType | string {
@@ -16,7 +16,7 @@ function mapShapeType(shapeType: string): keyof typeof PptxGenJS.ShapeType | str
 export async function generatePptx(
   layout: LayoutAnalysis,
   originalImage: HTMLImageElement,
-  fileName = 'deconstructed-slide.pptx'
+  fileName = 'unfographic-export.pptx'
 ) {
   const pptx = new PptxGenJS();
 

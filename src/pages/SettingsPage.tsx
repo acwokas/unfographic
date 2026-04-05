@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Layers } from 'lucide-react';
+import { ArrowLeft, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { loadSettings, saveSettings, getModelsForProvider } from '@/lib/settings';
 import { AppSettings } from '@/types/layout';
+import Logo from '@/components/Logo';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
@@ -21,30 +22,28 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     saveSettings(settings);
-    toast({ title: 'Settings saved' });
+    toast({ title: 'Settings saved. You\'re good to go.' });
   };
 
   return (
     <div className="min-h-screen bg-background">
       <nav className="flex items-center justify-between px-6 py-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Layers className="h-6 w-6 text-primary" />
-          <span className="font-heading text-lg font-bold text-foreground">Slide Deconstructor</span>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+        <Logo className="text-lg" />
+        <Button variant="ghost" size="sm" className="rounded-xl text-muted-foreground hover:text-foreground" onClick={() => navigate('/')}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
       </nav>
 
       <main className="max-w-md mx-auto py-12 px-6">
-        <h1 className="font-heading text-2xl font-bold text-foreground mb-8">Settings</h1>
+        <h1 className="font-heading text-2xl font-bold text-foreground mb-2">Settings</h1>
+        <p className="text-muted-foreground text-sm font-light mb-8">Tweak how Unfographic talks to the AI.</p>
 
         <div className="space-y-6">
-          <div className="rounded-lg border border-border p-4 space-y-3">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-1">
-                <Label htmlFor="custom-api-toggle">Use your own API key</Label>
-                <p className="text-xs text-muted-foreground">Off by default for shared links — the app uses server-side keys instead.</p>
+                <Label htmlFor="custom-api-toggle" className="text-foreground">Use your own API key</Label>
+                <p className="text-xs text-muted-foreground font-light">Off by default — the app uses its own backend keys.</p>
               </div>
               <Switch
                 id="custom-api-toggle"
@@ -55,7 +54,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <Label>AI Provider</Label>
+            <Label className="text-foreground">AI Provider</Label>
             <Select
               value={settings.provider}
               onValueChange={(v) =>
@@ -67,35 +66,37 @@ export default function SettingsPage() {
               }
               disabled={!useCustomApiKey}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="rounded-xl bg-background border-input text-foreground focus:border-primary focus:ring-primary/20"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="openai">OpenAI</SelectItem>
                 <SelectItem value="anthropic">Anthropic</SelectItem>
                 <SelectItem value="openrouter">OpenRouter</SelectItem>
               </SelectContent>
             </Select>
-            {!useCustomApiKey && <p className="text-xs text-muted-foreground">Shared mode uses the app's default backend provider.</p>}
+            {!useCustomApiKey && <p className="text-xs text-muted-foreground font-light">Using the app's default provider.</p>}
           </div>
 
           <div className="space-y-2">
-            <Label>API Key</Label>
+            <Label className="text-foreground">API Key</Label>
             <Input
               type="password"
               placeholder="sk-..."
               value={settings.apiKey}
               disabled={!useCustomApiKey}
+              className="rounded-xl bg-background border-input text-foreground focus:border-primary focus:ring-primary/20"
               onChange={(e) => setSettings((s) => ({ ...s, apiKey: e.target.value }))}
             />
-            <p className="text-xs text-muted-foreground">Stored locally in your browser and only used when custom key mode is enabled.</p>
+            <p className="text-xs text-muted-foreground font-light">Stored locally. Only used when custom key mode is on.</p>
           </div>
 
           <div className="space-y-2">
-            <Label>Model</Label>
+            <Label className="text-foreground">Model</Label>
             {isOpenRouter ? (
               <Input
                 placeholder="e.g. google/gemini-pro-vision"
                 value={settings.model}
                 disabled={!useCustomApiKey}
+                className="rounded-xl bg-background border-input text-foreground focus:border-primary focus:ring-primary/20"
                 onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
               />
             ) : (
@@ -104,7 +105,7 @@ export default function SettingsPage() {
                 onValueChange={(v) => setSettings((s) => ({ ...s, model: v }))}
                 disabled={!useCustomApiKey}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl bg-background border-input text-foreground focus:border-primary focus:ring-primary/20"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {models.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
@@ -115,12 +116,12 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <Label>Default Slide Size</Label>
+            <Label className="text-foreground">Default Slide Size</Label>
             <Select
               value={settings.slideSize}
               onValueChange={(v) => setSettings((s) => ({ ...s, slideSize: v as '16:9' | '4:3' }))}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="rounded-xl bg-background border-input text-foreground focus:border-primary focus:ring-primary/20"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="16:9">16:9 (Widescreen)</SelectItem>
                 <SelectItem value="4:3">4:3 (Standard)</SelectItem>
@@ -128,7 +129,7 @@ export default function SettingsPage() {
             </Select>
           </div>
 
-          <Button onClick={handleSave} className="w-full">
+          <Button onClick={handleSave} className="w-full rounded-xl bg-primary text-primary-foreground font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50">
             <Save className="h-4 w-4 mr-2" /> Save Settings
           </Button>
         </div>
