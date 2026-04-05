@@ -1,4 +1,7 @@
-import { corsHeaders } from '@supabase/supabase-js/cors'
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 const SYSTEM_PROMPT = `You are a precision layout analysis engine. Your job is to deconstruct infographic images into individual, editable PowerPoint components.
 
