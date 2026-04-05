@@ -16,6 +16,7 @@ export interface TextElement {
   backgroundColor?: string;
   borderColor?: string;
   borderWidth?: number;
+  anchored?: boolean;
 }
 
 export interface ImageRegionElement {
@@ -33,6 +34,7 @@ export interface ImageRegionElement {
   w: number;
   h: number;
   croppedDataUrl?: string;
+  anchored?: boolean;
 }
 
 export interface ShapeElement {
@@ -47,6 +49,7 @@ export interface ShapeElement {
   borderColor?: string;
   borderWidth?: number;
   rotation?: number;
+  anchored?: boolean;
 }
 
 export type LayoutElement = TextElement | ImageRegionElement | ShapeElement;
