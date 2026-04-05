@@ -71,24 +71,33 @@ export function buildSlideLayout(
       h = t.boundingBox.height * scaleY;
 
       // Enforce reasonable minimums
-      w = Math.max(w, 0.4);
-      h = Math.max(h, 0.15);
+      w = Math.max(w, 0.3);
+      h = Math.max(h, 0.12);
 
       // Derive font size from bounding box height (inches -> points)
-      // Use 0.75 factor since text doesn't fill 100% of its bounding box
-      fs = Math.round(h * 72 * 0.75);
-      // Tighter clamp: cap at 36pt to prevent absurdly large text
-      fs = Math.max(6, Math.min(fs, 36));
+      // Factor 0.80: accounts for line spacing overhead in PowerPoint rendering.
+      // Each OCR line is a single line of text, so height = actual line height.
+      fs = Math.round(h * 72 * 0.80);
+      fs = Math.max(5, Math.min(fs, 28));
+
+      // Estimate if text fits in one line at this font size.
+      // Average char width in Arial â 0.52 Ã font size (points) / 72 (inches)
+      const estCharWidth = 0.52 * fs / 72;
+      const estTextWidth = t.content.length * estCharWidth;
+      if (estTextWidth > w && t.content.length > 0) {
+        // Text would overflow â shrink font to fit in the box width
+        const fittedFs = Math.floor((w / (t.content.length * 0.52)) * 72);
+        fs = Math.max(5, Math.min(fs, fittedFs));
+      }
 
       // Small padding to cover original text
-      const padX = 0.04;
-      const padY = 0.02;
+      const padX = 0.03;
+      const padY = 0.015;
       x = Math.max(MARGIN, x - padX);
       y = Math.max(0.05, y - padY);
       w = w + padX * 2;
       h = h + padY * 2;
 
-      // ANCHORED: boundingBox elements stay exactly where the OCR placed them
       anchored = true;
     } else {
       // Fallback: zone-based positioning
@@ -131,23 +140,19 @@ export function buildSlideLayout(
 
   // Process image regions: pixel-precise positioning using cropBox
   for (const r of (aiResponse.imageRegions || [])) {
-    // Convert cropBox pixels to slide inches â same approach as text boundingBox
     let x = r.cropBox.x * scaleX;
     let y = r.cropBox.y * scaleY;
     let w = r.cropBox.width * scaleX;
     let h = r.cropBox.height * scaleY;
 
-    // Reasonable min/max
     w = Math.max(w, 0.4);
     h = Math.max(h, 0.35);
     w = Math.min(w, SLIDE_W - MARGIN * 2);
     h = Math.min(h, SLIDE_H - 0.1);
 
-    // Clamp to slide
     x = Math.max(MARGIN, Math.min(x, SLIDE_W - w - MARGIN));
     y = Math.max(0.05, Math.min(y, SLIDE_H - h - 0.05));
 
-    // Scale cropBox from AI coordinate space (resized image) to original image space
     const origScaleX = originalImage.naturalWidth / imgW;
     const origScaleY = originalImage.naturalHeight / imgH;
     const scaledCropBox = {
@@ -175,7 +180,6 @@ export function buildSlideLayout(
     });
   }
 
-  // Resolve collisions â now handles anchored-vs-anchored overlaps too
   resolveCollisions(elements);
 
   return {
@@ -184,7 +188,6 @@ export function buildSlideLayout(
   };
 }
 
-// Collision resolver: handles both anchored and non-anchored elements
 function resolveCollisions(els: LayoutElement[]): void {
   function isAnchored(el: LayoutElement): boolean {
     return !!(el as any).anchored;
@@ -193,7 +196,6 @@ function resolveCollisions(els: LayoutElement[]): void {
   function imp(el: LayoutElement): number {
     if (el.type === 'image_region') return 150;
     const t = el as TextElement;
-    // Larger text is more important
     if (t.fontSize >= 20) return 100;
     if (t.fontSize >= 14) return 85;
     if (t.fontSize >= 11) return 70;
@@ -214,30 +216,26 @@ function resolveCollisions(els: LayoutElement[]): void {
     return ox * oy;
   }
 
-  // Phase 1: Handle anchored-vs-anchored overlaps by shrinking the smaller one
+  // Phase 1: Handle anchored-vs-anchored overlaps
   for (let i = 0; i < els.length; i++) {
     for (let j = i + 1; j < els.length; j++) {
       if (!overlaps(els[i], els[j])) continue;
       if (!isAnchored(els[i]) || !isAnchored(els[j])) continue;
 
-      // Both anchored and overlapping â shrink the less important one
       const aArea = els[i].w * els[i].h;
       const bArea = els[j].w * els[j].h;
       const smaller = aArea < bArea ? els[i] : els[j];
       const larger = aArea >= bArea ? els[i] : els[j];
 
-      // Calculate overlap percentage relative to the smaller element
       const oArea = overlapArea(smaller, larger);
       const pct = oArea / (smaller.w * smaller.h);
 
       if (pct > 0.5) {
-        // More than 50% overlap â remove the smaller element entirely
         els.splice(els.indexOf(smaller), 1);
-        if (j > i) j--; // adjust index
+        if (j > i) j--;
         continue;
       }
 
-      // Trim the smaller element to avoid the overlap
       const trimRight = (smaller.x + smaller.w) - larger.x;
       const trimLeft = (larger.x + larger.w) - smaller.x;
       const trimDown = (smaller.y + smaller.h) - larger.y;
@@ -266,11 +264,8 @@ function resolveCollisions(els: LayoutElement[]): void {
     for (let i = 0; i < els.length; i++) {
       for (let j = i + 1; j < els.length; j++) {
         if (!overlaps(els[i], els[j])) continue;
-
-        // Skip if both anchored (handled in phase 1)
         if (isAnchored(els[i]) && isAnchored(els[j])) continue;
 
-        // Determine which element to move
         let fixed: LayoutElement, movable: LayoutElement;
         if (isAnchored(els[i])) {
           fixed = els[i]; movable = els[j];
@@ -312,7 +307,7 @@ function resolveCollisions(els: LayoutElement[]): void {
     if (!moved) break;
   }
 
-  // Phase 3: Safety pass â push remaining non-anchored overlaps downward
+  // Phase 3: Safety pass
   for (let pass = 0; pass < 30; pass++) {
     let moved = false;
     for (let i = 0; i < els.length; i++) {
