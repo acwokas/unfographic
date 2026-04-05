@@ -27,6 +27,7 @@ TEXT BLOCKS:
 - Classify each as: "title", "subtitle", "heading", "subheading", "body", "label", or "caption"
 - Position hint: describe where it sits (e.g. "top-left", "center-left", "bottom-center")
 - Estimate visual properties: bold, font colour (hex no #), approximate relative size (large/medium/small/tiny)
+- CRITICAL: For each text block, provide a boundingBox in PIXELS (x, y, width, height) showing exactly where the text appears in the original image. This is essential for precise PowerPoint positioning.
 
 LAYOUT ZONES:
 Also describe the overall layout structure of the infographic:
@@ -35,7 +36,6 @@ Also describe the overall layout structure of the infographic:
 - What are the major groupings of content?
 
 OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
-
 {
   "imageWidth": 1920,
   "imageHeight": 1080,
@@ -66,7 +66,8 @@ OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
       "section": "global",
       "fontColor": "1A2744",
       "bold": true,
-      "size": "large"
+      "size": "large",
+      "boundingBox": {"x": 40, "y": 30, "width": 1350, "height": 70}
     },
     {
       "id": "desc-section1",
@@ -76,18 +77,20 @@ OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
       "section": "Processing",
       "fontColor": "444444",
       "bold": false,
-      "size": "small"
+      "size": "small",
+      "boundingBox": {"x": 780, "y": 335, "width": 500, "height": 50}
     }
   ]
 }
 
 CHECKLIST:
-- Every visible icon, illustration, and diagram is in imageRegions? ✓
-- Every heading is in textBlocks? ✓
-- Every body/description paragraph is a SEPARATE entry from its heading? ✓
-- Every small label (CRM, DSPs, etc.) is included? ✓
-- Text content is COMPLETE and not truncated? ✓
-- cropBox coordinates are in pixels with 10px padding? ✓`;
+- Every visible icon, illustration, and diagram is in imageRegions? check
+- Every heading is in textBlocks? check
+- Every body/description paragraph is a SEPARATE entry from its heading? check
+- Every small label (CRM, DSPs, etc.) is included? check
+- Text content is COMPLETE and not truncated? check
+- cropBox coordinates are in pixels with 10px padding? check
+- boundingBox provided for EVERY text block? check`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -110,18 +113,20 @@ Deno.serve(async (req) => {
 
     if (!image_base64) {
       return new Response(JSON.stringify({ error: 'Missing required field: image_base64' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (!api_key) {
       return new Response(JSON.stringify({ error: 'No API key provided and no server default configured.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const dimHint = image_width && image_height
-      ? `Image dimensions: ${image_width}px wide × ${image_height}px tall.`
+      ? `Image dimensions: ${image_width}px wide x ${image_height}px tall.`
       : 'Estimate the image dimensions from the image itself.';
 
     const userMessage = `Analyze this infographic. ${dimHint} Extract all image regions and text blocks. Return the structured JSON.`;
@@ -132,28 +137,39 @@ Deno.serve(async (req) => {
       const url = isOpenRouter
         ? 'https://openrouter.ai/api/v1/chat/completions'
         : 'https://api.openai.com/v1/chat/completions';
+
       const body: Record<string, unknown> = {
         model: mdl,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: [
-            { type: 'text', text: userMessage },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image_base64}` } },
-          ] },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: userMessage },
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image_base64}` } },
+            ],
+          },
         ],
         max_tokens: 16000,
         temperature: 0.1,
       };
+
       if (!isOpenRouter) body.response_format = { type: 'json_object' };
+
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+        },
         body: JSON.stringify(body),
       });
+
       if (!resp.ok) {
         const err = await resp.text();
         return { ok: false, error: `OpenAI API error (${resp.status}): ${err.substring(0, 500)}` };
       }
+
       const data = await resp.json();
       const text = data.choices?.[0]?.message?.content;
       return text ? { ok: true, result: text } : { ok: false, error: 'Empty response from OpenAI' };
@@ -171,16 +187,21 @@ Deno.serve(async (req) => {
           model: mdl,
           max_tokens: 16000,
           system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_base64 } },
-            { type: 'text', text: userMessage },
-          ] }],
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_base64 } },
+              { type: 'text', text: userMessage },
+            ],
+          }],
         }),
       });
+
       if (!resp.ok) {
         const err = await resp.text();
         return { ok: false, error: `Anthropic API error (${resp.status}): ${err.substring(0, 500)}` };
       }
+
       const data = await resp.json();
       const text = data.content?.[0]?.text;
       return text ? { ok: true, result: text } : { ok: false, error: 'Empty response from Anthropic' };
@@ -196,7 +217,10 @@ Deno.serve(async (req) => {
     let lastError = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await callProvider(provider, api_key, model);
-      if (res.ok && res.result) { result = res.result; break; }
+      if (res.ok && res.result) {
+        result = res.result;
+        break;
+      }
       lastError = res.error || 'Unknown error';
       console.warn(`Attempt ${attempt + 1} with ${provider} failed: ${lastError}`);
       if (lastError.includes('(401)')) break;
@@ -207,6 +231,7 @@ Deno.serve(async (req) => {
       const fallbackProvider = provider === 'openai' ? 'anthropic' : 'openai';
       const fallbackKey = getKeyForProvider(fallbackProvider);
       const fallbackModel = fallbackProvider === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-20250514';
+
       if (fallbackKey) {
         console.log(`Falling back to ${fallbackProvider}...`);
         const res = await callProvider(fallbackProvider, fallbackKey, fallbackModel);
@@ -220,7 +245,8 @@ Deno.serve(async (req) => {
 
     if (!result) {
       return new Response(JSON.stringify({ error: lastError || 'All AI providers failed.' }), {
-        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -235,7 +261,8 @@ Deno.serve(async (req) => {
     } catch (parseErr) {
       console.error('Failed to parse AI response as JSON:', cleaned.substring(0, 200));
       return new Response(JSON.stringify({ error: 'AI returned invalid JSON. Try re-analyzing.' }), {
-        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -247,7 +274,8 @@ Deno.serve(async (req) => {
     const message = e instanceof Error ? e.message : 'Internal error';
     console.error('Edge function error:', message);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
