@@ -3,94 +3,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `You are a precision layout analysis engine. Your job is to deconstruct infographic images into editable PowerPoint components.
+const SYSTEM_PROMPT = `You are a precision layout analysis engine. You deconstruct infographic images into editable PowerPoint components.
 
-STRATEGY — USE A LAYERED APPROACH:
+APPROACH:
+1. The ENTIRE original image becomes a full-slide background
+2. You extract every visible text string as a positioned text overlay
+3. Users can then edit, move, or delete any text in PowerPoint
 
-1. FIRST: Place the ENTIRE original image as a single full-slide background image region
-2. THEN: Extract ONLY the text elements as overlays on top, so users can edit the copy
+YOUR TASK:
+Given an image of dimensions IMAGE_WIDTH × IMAGE_HEIGHT pixels, identify every text element and return its PIXEL-BASED bounding box.
 
-This means every infographic gets deconstructed as:
-- One full-bleed background image (the original infographic)
-- Multiple editable text boxes positioned precisely over where text appears in the image
+RULES FOR TEXT EXTRACTION:
 
-Users can then: edit any text, delete text boxes they don't need, or delete the background and keep only the text.
+1. BOUNDING BOXES IN PIXELS:
+   - Return x, y, w, h in PIXELS relative to the original image dimensions
+   - x = pixels from left edge to the LEFT side of the text
+   - y = pixels from top edge to the TOP of the text
+   - w = pixel width of the text block
+   - h = pixel height of the text block
+   - Be PRECISE — the text box must sit exactly over the text in the image
 
-COORDINATE SYSTEM:
-- All x, y, w, h values in INCHES
-- Origin (0,0) is top-left
-- Be precise — text boxes must sit exactly over the text in the background image
+2. TEXT GROUPING:
+   - Keep headings and their subtitles as SEPARATE elements
+   - Keep labels (like "CRM", "DSPs") as individual elements
+   - Group a description paragraph as one element
+   - Each bullet point is a separate element
 
-RULES:
+3. FONT SIZE ESTIMATION:
+   - Measure the approximate cap-height of the text in pixels
+   - Return this as fontSizePx — we will convert to points later
+   - Title text is usually 30-50px cap height
+   - Body text is usually 12-20px cap height
+   - Small labels are usually 10-14px cap height
 
-1. BACKGROUND IMAGE:
-   - Always include exactly ONE image_region element with id "background"
-   - Its cropBox covers the entire image: { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT }
-   - Placement fills the full slide
+4. VISUAL PROPERTIES:
+   - fontColor: hex color WITHOUT # prefix (e.g. "FFFFFF")
+   - bold: true for headings and emphasized text
+   - align: "left", "center", or "right"
 
-2. TEXT ELEMENTS:
-   - Extract every readable text string as a separate text element
-   - Position each text box EXACTLY over where that text appears in the background
-   - Size the text box to tightly fit the text (not too wide, not too tall)
-   - Estimate font size carefully based on visual proportions
-   - Group a heading with its immediate subtext ONLY if they're visually a single block
-   - For bullet lists, keep each bullet as a separate text element
+5. ELEMENT ORDER:
+   - Top to bottom, left to right
+   - Titles first, then section headers, then body text, then captions
 
-3. DO NOT:
-   - Do NOT create multiple image_region elements for individual icons, diagrams, or illustrations
-   - Do NOT create shape elements (the background image already contains them)
-   - Do NOT duplicate — if text is in the background image, the text overlay is the editable version
-
-4. ELEMENT ORDER:
-   - First element: the background image_region
-   - Remaining elements: text overlays, ordered top-to-bottom, left-to-right
-
-5. TEXT STYLING:
-   - Match font color to what's visible in the image
-   - Set backgroundColor to null (text floats over the background image)
-   - Bold for headings and emphasis
-   - Use fontFace "Arial" as default
-
-OUTPUT FORMAT:
-Return ONLY valid JSON (no markdown, no code fences, no explanation):
+OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
 
 {
-  "slide": {
-    "width": 10,
-    "height": 5.625,
-    "backgroundColor": "FFFFFF"
-  },
-  "elements": [
+  "imageWidth": IMAGE_WIDTH,
+  "imageHeight": IMAGE_HEIGHT,
+  "texts": [
     {
-      "type": "image_region",
-      "id": "background",
-      "description": "Full infographic background",
-      "cropBox": { "x": 0, "y": 0, "width": ORIGINAL_WIDTH, "height": ORIGINAL_HEIGHT },
-      "x": 0, "y": 0, "w": 10, "h": 5.625
-    },
-    {
-      "type": "text",
       "id": "title-main",
-      "content": "The Modern Agency Operating System",
-      "x": 0.3, "y": 0.2, "w": 5.5, "h": 0.7,
-      "fontSize": 22,
-      "fontFace": "Arial",
-      "fontColor": "1A1A2E",
+      "content": "The text content here",
+      "x": 120,
+      "y": 45,
+      "w": 800,
+      "h": 55,
+      "fontSizePx": 38,
+      "fontColor": "2C5F5D",
       "bold": true,
-      "italic": false,
-      "align": "left",
-      "valign": "top",
-      "backgroundColor": null
+      "align": "left"
     }
   ]
 }
 
 CRITICAL:
-- Every color hex WITHOUT the # prefix
-- Only ONE image_region (the full background)
-- All other elements are type "text" only
-- Be thorough: extract ALL visible text, even small captions and labels
-- IDs should be descriptive: "title-main", "section-header-1", "label-crm", "caption-bottom-left"`;
+- ALL coordinates in PIXELS, not inches
+- Be extremely precise with x and y — off by even 20px will look wrong
+- Include the imageWidth and imageHeight you were told in the response
+- Extract ALL text — titles, headers, labels, body text, captions, watermarks
+- IDs should be descriptive: "title-main", "label-crm", "desc-ai-architecture"`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -127,12 +108,12 @@ Deno.serve(async (req) => {
 
     const slideW = slide_size === '4:3' ? 10 : 10;
     const slideH = slide_size === '4:3' ? 7.5 : 5.625;
-    const sizeHint = `Slide dimensions: ${slideW}" x ${slideH}" (${slide_size || '16:9'} aspect ratio).`;
-    const dimHint = image_width && image_height
-      ? `The original image dimensions are ${image_width}px × ${image_height}px. Use these exact values for the background cropBox.`
-      : '';
 
-    const userMessage = `Analyze this infographic image and return the layout JSON. ${dimHint} ${sizeHint} Extract the full image as background and all text as overlays.`;
+    const dimHint = image_width && image_height
+      ? `Image dimensions: ${image_width}px wide × ${image_height}px tall.`
+      : 'Estimate the image dimensions from the image itself.';
+
+    const userMessage = `Analyze this infographic. ${dimHint} Return pixel-based bounding boxes for every text element.`;
 
     let result: string | null = null;
 
@@ -238,9 +219,9 @@ Deno.serve(async (req) => {
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
     }
 
-    let layout;
+    let aiResponse;
     try {
-      layout = JSON.parse(cleaned);
+      aiResponse = JSON.parse(cleaned);
     } catch (parseErr) {
       console.error('Failed to parse AI response as JSON:', cleaned.substring(0, 200));
       return new Response(JSON.stringify({ error: 'AI returned invalid JSON. Try re-analyzing.' }), {
@@ -249,12 +230,41 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!layout.slide || !Array.isArray(layout.elements)) {
-      return new Response(JSON.stringify({ error: 'AI response missing slide or elements fields. Try re-analyzing.' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Convert pixel-based AI response to inch-based slide coordinates
+    const imgW = aiResponse.imageWidth || image_width || 1920;
+    const imgH = aiResponse.imageHeight || image_height || 1080;
+
+    const elements = [
+      {
+        type: 'image_region' as const,
+        id: 'background',
+        description: 'Full infographic background',
+        cropBox: { x: 0, y: 0, width: imgW, height: imgH },
+        x: 0, y: 0, w: slideW, h: slideH,
+      },
+      ...(aiResponse.texts || []).map((t: any) => ({
+        type: 'text' as const,
+        id: t.id || 'text',
+        content: t.content || '',
+        x: parseFloat(((t.x / imgW) * slideW).toFixed(3)),
+        y: parseFloat(((t.y / imgH) * slideH).toFixed(3)),
+        w: parseFloat(((t.w / imgW) * slideW).toFixed(3)),
+        h: parseFloat(((t.h / imgH) * slideH).toFixed(3)),
+        fontSize: Math.round(t.fontSizePx * (slideH / imgH) * 72),
+        fontFace: 'Arial',
+        fontColor: (t.fontColor || '000000').replace('#', ''),
+        bold: !!t.bold,
+        italic: false,
+        align: t.align || 'left',
+        valign: 'top',
+        backgroundColor: null,
+      })),
+    ];
+
+    const layout = {
+      slide: { width: slideW, height: slideH, backgroundColor: 'FFFFFF' },
+      elements,
+    };
 
     return new Response(JSON.stringify(layout), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
