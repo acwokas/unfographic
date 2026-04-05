@@ -45,6 +45,15 @@ RULES FOR TEXT EXTRACTION:
    - Top to bottom, left to right
    - Titles first, then section headers, then body text, then captions
 
+6. BACKGROUND COLOR DETECTION:
+   - For each text element, identify the dominant colour of the area DIRECTLY BEHIND the text
+   - Return this as "bgColor" (hex without # prefix)
+   - If text sits on a white/light area: "FFFFFF" or "F5F5F5"
+   - If text sits on a dark area: return that dark colour (e.g. "1A1A2E")
+   - If text sits on a gradient, pick the dominant/average colour
+   - If text sits on a complex image area, pick the most common colour in that region
+   - This background colour will be used to COVER the original text, so accuracy matters
+
 OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
 
 {
@@ -60,6 +69,7 @@ OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
       "h": 55,
       "fontSizePx": 38,
       "fontColor": "2C5F5D",
+      "bgColor": "E8F4F0",
       "bold": true,
       "align": "left"
     }
@@ -71,7 +81,8 @@ CRITICAL:
 - Be extremely precise with x and y — off by even 20px will look wrong
 - Include the imageWidth and imageHeight you were told in the response
 - Extract ALL text — titles, headers, labels, body text, captions, watermarks
-- IDs should be descriptive: "title-main", "label-crm", "desc-ai-architecture"`;
+- IDs should be descriptive: "title-main", "label-crm", "desc-ai-architecture"
+- ALWAYS include bgColor for every text element`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -242,23 +253,31 @@ Deno.serve(async (req) => {
         cropBox: { x: 0, y: 0, width: imgW, height: imgH },
         x: 0, y: 0, w: slideW, h: slideH,
       },
-      ...(aiResponse.texts || []).map((t: any) => ({
-        type: 'text' as const,
-        id: t.id || 'text',
-        content: t.content || '',
-        x: parseFloat(((t.x / imgW) * slideW).toFixed(3)),
-        y: parseFloat(((t.y / imgH) * slideH).toFixed(3)),
-        w: parseFloat(((t.w / imgW) * slideW).toFixed(3)),
-        h: parseFloat(((t.h / imgH) * slideH).toFixed(3)),
-        fontSize: Math.round(t.fontSizePx * (slideH / imgH) * 72),
-        fontFace: 'Arial',
-        fontColor: (t.fontColor || '000000').replace('#', ''),
-        bold: !!t.bold,
-        italic: false,
-        align: t.align || 'left',
-        valign: 'top',
-        backgroundColor: null,
-      })),
+      ...(aiResponse.texts || []).map((t: any) => {
+        const rawX = (t.x / imgW) * slideW;
+        const rawY = (t.y / imgH) * slideH;
+        const rawW = (t.w / imgW) * slideW;
+        const rawH = (t.h / imgH) * slideH;
+        const padX = rawW * 0.05;
+        const padY = rawH * 0.1;
+        return {
+          type: 'text' as const,
+          id: t.id || 'text',
+          content: t.content || '',
+          x: parseFloat((rawX - padX).toFixed(3)),
+          y: parseFloat((rawY - padY).toFixed(3)),
+          w: parseFloat((rawW + padX * 2).toFixed(3)),
+          h: parseFloat((rawH + padY * 2).toFixed(3)),
+          fontSize: Math.round(t.fontSizePx * (slideH / imgH) * 72),
+          fontFace: 'Arial',
+          fontColor: (t.fontColor || '000000').replace('#', ''),
+          bold: !!t.bold,
+          italic: false,
+          align: t.align || 'left',
+          valign: 'middle',
+          backgroundColor: (t.bgColor || 'FFFFFF').replace('#', ''),
+        };
+      }),
     ];
 
     const layout = {
