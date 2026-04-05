@@ -139,9 +139,19 @@ export function buildSlideLayout(
     x = Math.max(MARGIN, Math.min(x, SLIDE_W - w - MARGIN));
     y = Math.max(0.05, Math.min(y, SLIDE_H - h - 0.05));
 
+    // Scale cropBox from AI coordinate space (resized image) to original image space
+    const origScaleX = originalImage.naturalWidth / imgW;
+    const origScaleY = originalImage.naturalHeight / imgH;
+    const scaledCropBox = {
+      x: r.cropBox.x * origScaleX,
+      y: r.cropBox.y * origScaleY,
+      width: r.cropBox.width * origScaleX,
+      height: r.cropBox.height * origScaleY,
+    };
+
     let croppedDataUrl: string | undefined;
     try {
-      croppedDataUrl = cropImageRegion(originalImage, r.cropBox);
+      croppedDataUrl = cropImageRegion(originalImage, scaledCropBox);
     } catch (e) {
       console.warn('crop fail', r.id, e);
     }
