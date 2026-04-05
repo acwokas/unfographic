@@ -111,7 +111,6 @@ export interface ConversionJob {
   fileName: string;
   imageDataUrl: string;
   originalImage?: HTMLImageElement;
-  layout?: LayoutAnalysis;
   status: 'uploading' | 'analyzing' | 'ready' | 'error';
   error?: string;
 }
