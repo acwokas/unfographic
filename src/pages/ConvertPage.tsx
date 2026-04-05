@@ -47,8 +47,9 @@ export default function ConvertPage() {
     try {
       const resized = await resizeImageForApi(job.imageDataUrl);
       const base64 = resized.split(',')[1];
-      const layout = await analyzeLayout(base64, settings);
+      // Load original image to get dimensions for the AI prompt
       const img = await loadImage(job.imageDataUrl);
+      const layout = await analyzeLayout(base64, settings, img.naturalWidth, img.naturalHeight);
       updateJob(id, { status: 'ready', layout, originalImage: img });
       setJob((prev) => prev ? { ...prev, status: 'ready', layout, originalImage: img } : prev);
     } catch (e: any) {
