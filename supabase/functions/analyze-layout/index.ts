@@ -107,12 +107,16 @@ Deno.serve(async (req) => {
     const { image_base64, provider: reqProvider, model: reqModel, api_key: reqApiKey, slide_size, image_width, image_height } = await req.json();
 
     // Use request values or fall back to server defaults
-    const provider = reqProvider || 'openai';
-    const model = reqModel || 'gpt-4o';
-    const api_key = reqApiKey
-      || (provider === 'openai' ? Deno.env.get('OPENAI_API_KEY') : '')
-      || (provider === 'anthropic' ? Deno.env.get('ANTHROPIC_API_KEY') : '')
-      || '';
+    let provider = reqProvider || 'openai';
+    let model = reqModel || (provider === 'openai' ? 'gpt-4o' : provider === 'anthropic' ? 'claude-sonnet-4-20250514' : '');
+
+    function getKeyForProvider(p: string): string {
+      if (p === 'openai') return Deno.env.get('OPENAI_API_KEY') || '';
+      if (p === 'anthropic') return Deno.env.get('ANTHROPIC_API_KEY') || '';
+      return '';
+    }
+
+    let api_key = reqApiKey || getKeyForProvider(provider);
 
     if (!image_base64) {
       return new Response(JSON.stringify({ error: 'Missing required field: image_base64' }), {
