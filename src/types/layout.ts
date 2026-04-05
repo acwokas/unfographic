@@ -70,7 +70,12 @@ export interface AILayoutSection {
 export interface AIImageRegion {
   id: string;
   description: string;
-  cropBox: { x: number; y: number; width: number; height: number };
+  cropBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   positionHint: string;
   section: string;
 }
@@ -84,6 +89,12 @@ export interface AITextBlock {
   fontColor: string;
   bold: boolean;
   size: 'large' | 'medium' | 'small' | 'tiny';
+  boundingBox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface AIResponse {
