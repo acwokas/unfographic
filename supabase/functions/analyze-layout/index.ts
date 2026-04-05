@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
           { role: 'system', content: fullSystemPrompt },
           { role: 'user', content: [
             { type: 'text', text: userMessage },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${image_base64}` } },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image_base64}` } },
           ] },
         ],
         max_tokens: 8000,
