@@ -49,8 +49,8 @@ export async function generatePptx(
         bold: el.bold,
         italic: el.italic,
         align: el.align,
-        valign: el.valign || 'top',
-        margin: 0,
+        valign: el.valign || 'middle',
+        margin: [2, 4, 2, 4],
         fill: { color: el.backgroundColor || 'FFFFFF' },
       });
     } catch (e) {

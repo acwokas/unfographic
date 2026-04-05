@@ -7,52 +7,59 @@ const SYSTEM_PROMPT = `You are a precision layout analysis engine. You deconstru
 
 APPROACH:
 1. The ENTIRE original image becomes a full-slide background
-2. You extract every visible text string as a positioned text overlay
-3. Users can then edit, move, or delete any text in PowerPoint
+2. You extract EVERY SINGLE visible text string as a positioned text overlay with an opaque background
+3. In PowerPoint, each text box covers the original text beneath it so users see only the editable version
 
 YOUR TASK:
-Given an image of dimensions IMAGE_WIDTH × IMAGE_HEIGHT pixels, identify every text element and return its PIXEL-BASED bounding box.
+Given an image of dimensions IMAGE_WIDTH × IMAGE_HEIGHT pixels, identify EVERY text element and return its pixel-based bounding box plus the background colour behind it.
 
-RULES FOR TEXT EXTRACTION:
+COMPLETENESS IS CRITICAL:
+- You MUST extract ALL text — titles, subtitles, headers, body paragraphs, labels, captions, descriptions, watermarks, and attributions
+- If you see text in the image, it MUST appear in your output
+- Do NOT skip small text, description text, or secondary copy
+- Do NOT truncate text content — include the FULL text of every element
+- Count your extracted texts and compare against what you see — if you see 25 text areas, return 25 elements
 
-1. BOUNDING BOXES IN PIXELS:
-   - Return x, y, w, h in PIXELS relative to the original image dimensions
-   - x = pixels from left edge to the LEFT side of the text
-   - y = pixels from top edge to the TOP of the text
-   - w = pixel width of the text block
-   - h = pixel height of the text block
-   - Be PRECISE — the text box must sit exactly over the text in the image
+TEXT SEPARATION RULES:
+- Headers and their descriptions MUST be SEPARATE elements (never combine "Header\\nDescription" into one)
+- Example: "AI-Driven Data Architecture" is one element, "Applying machine learning and audience modelling within a privacy-compliant framework." is a SEPARATE element
+- Labels like "CRM", "DSPs", "Social Media" are each individual elements
+- Each bullet point or list item is a separate element
 
-2. TEXT GROUPING:
-   - Keep headings and their subtitles as SEPARATE elements
-   - Keep labels (like "CRM", "DSPs") as individual elements
-   - Group a description paragraph as one element
-   - Each bullet point is a separate element
+BOUNDING BOXES:
+- Return x, y, w, h in PIXELS relative to the original image dimensions
+- x = pixels from left edge to LEFT side of text
+- y = pixels from top edge to TOP of text
+- w = pixel width of the text block
+- h = pixel height of the text block
+- ADD PADDING: make each bounding box ~10% larger than the visible text on all sides
+  - This ensures the opaque background fully covers the original text even if positioning is slightly off
+  - So if text is 200px wide, return w=220 and shift x left by 10px
 
-3. FONT SIZE ESTIMATION:
-   - Measure the approximate cap-height of the text in pixels
-   - Return this as fontSizePx — we will convert to points later
-   - Title text is usually 30-50px cap height
-   - Body text is usually 12-20px cap height
-   - Small labels are usually 10-14px cap height
+BACKGROUND COLOUR (bgColor):
+- For EVERY text element, detect the dominant colour of the area DIRECTLY BEHIND the text in the image
+- This is REQUIRED — every element must have a bgColor
+- If text is on a white/light area: return "FFFFFF" or the actual light colour
+- If text is on a dark area: return that dark colour
+- If text is on a gradient: pick the average/dominant colour
+- If text is on a coloured banner or shape: return that shape's colour
+- The bgColor will be used as an opaque fill to COVER the original text, so accuracy matters
 
-4. VISUAL PROPERTIES:
-   - fontColor: hex color WITHOUT # prefix (e.g. "FFFFFF")
-   - bold: true for headings and emphasized text
-   - align: "left", "center", or "right"
+FONT SIZE:
+- Estimate the cap-height of the text in pixels as fontSizePx
+- Large titles: 30-50px
+- Section headers: 18-28px
+- Body/descriptions: 12-18px
+- Small labels/captions: 9-14px
 
-5. ELEMENT ORDER:
-   - Top to bottom, left to right
-   - Titles first, then section headers, then body text, then captions
+VISUAL PROPERTIES:
+- fontColor: hex color WITHOUT # prefix (e.g. "FFFFFF")
+- bold: true for headings and emphasized text
+- align: "left", "center", or "right"
 
-6. BACKGROUND COLOR DETECTION:
-   - For each text element, identify the dominant colour of the area DIRECTLY BEHIND the text
-   - Return this as "bgColor" (hex without # prefix)
-   - If text sits on a white/light area: "FFFFFF" or "F5F5F5"
-   - If text sits on a dark area: return that dark colour (e.g. "1A1A2E")
-   - If text sits on a gradient, pick the dominant/average colour
-   - If text sits on a complex image area, pick the most common colour in that region
-   - This background colour will be used to COVER the original text, so accuracy matters
+ELEMENT ORDER:
+- Top to bottom, left to right
+- Titles first, then section headers, then body text, then captions
 
 OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
 
@@ -62,27 +69,43 @@ OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
   "texts": [
     {
       "id": "title-main",
-      "content": "The text content here",
-      "x": 120,
-      "y": 45,
-      "w": 800,
-      "h": 55,
-      "fontSizePx": 38,
-      "fontColor": "2C5F5D",
-      "bgColor": "E8F4F0",
+      "content": "The Modern Agency Operating System:",
+      "x": 110,
+      "y": 35,
+      "w": 850,
+      "h": 65,
+      "fontSizePx": 40,
+      "fontColor": "1A2744",
+      "bgColor": "E8F0ED",
       "bold": true,
+      "align": "left"
+    },
+    {
+      "id": "subtitle-main",
+      "content": "From Raw Data to Strategic Growth",
+      "x": 110,
+      "y": 105,
+      "w": 700,
+      "h": 50,
+      "fontSizePx": 28,
+      "fontColor": "444444",
+      "bgColor": "E8F0ED",
+      "bold": false,
       "align": "left"
     }
   ]
 }
 
-CRITICAL:
-- ALL coordinates in PIXELS, not inches
-- Be extremely precise with x and y — off by even 20px will look wrong
-- Include the imageWidth and imageHeight you were told in the response
-- Extract ALL text — titles, headers, labels, body text, captions, watermarks
-- IDs should be descriptive: "title-main", "label-crm", "desc-ai-architecture"
-- ALWAYS include bgColor for every text element`;
+CHECKLIST BEFORE RESPONDING:
+- Did I extract the main title? ✓
+- Did I extract the subtitle? ✓
+- Did I extract EVERY section header? ✓
+- Did I extract EVERY body description as a SEPARATE element from its header? ✓
+- Did I extract ALL labels (CRM, DSPs, Social Media, etc.)? ✓
+- Did I extract small text, captions, and watermarks? ✓
+- Does EVERY element have a bgColor? ✓
+- Did I add padding to bounding boxes? ✓
+- Is the content COMPLETE (not truncated)? ✓`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -141,7 +164,7 @@ Deno.serve(async (req) => {
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image_base64}` } },
           ] },
         ],
-        max_tokens: 8000,
+        max_tokens: 16000,
         temperature: 0.1,
       };
       if (!isOpenRouter) body.response_format = { type: 'json_object' };
@@ -169,7 +192,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           model: mdl,
-          max_tokens: 8000,
+          max_tokens: 16000,
           system: SYSTEM_PROMPT,
           messages: [{ role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_base64 } },
