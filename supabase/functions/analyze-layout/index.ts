@@ -142,109 +142,102 @@ Deno.serve(async (req) => {
     const userMessage = `Analyze this infographic image and return the layout JSON. ${dimHint} ${sizeHint} Deconstruct every element for PowerPoint reconstruction.`;
     const fullSystemPrompt = SYSTEM_PROMPT;
 
-    let result: string;
+    let result: string | null = null;
 
-    if (provider === 'openai' || provider === 'openrouter') {
-      const url = provider === 'openai'
-        ? 'https://api.openai.com/v1/chat/completions'
-        : 'https://openrouter.ai/api/v1/chat/completions';
-
+    async function callOpenAI(key: string, mdl: string, isOpenRouter = false): Promise<{ ok: boolean; result?: string; error?: string }> {
+      const url = isOpenRouter
+        ? 'https://openrouter.ai/api/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions';
       const body: Record<string, unknown> = {
-        model,
+        model: mdl,
         messages: [
           { role: 'system', content: fullSystemPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: userMessage },
-              { type: 'image_url', image_url: { url: `data:image/png;base64,${image_base64}` } },
-            ],
-          },
+          { role: 'user', content: [
+            { type: 'text', text: userMessage },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${image_base64}` } },
+          ] },
         ],
         max_tokens: 8000,
         temperature: 0.1,
       };
-
-      // OpenAI supports json_object response format
-      if (provider === 'openai') {
-        body.response_format = { type: 'json_object' };
-      }
-
+      if (!isOpenRouter) body.response_format = { type: 'json_object' };
       const resp = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${api_key}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
         body: JSON.stringify(body),
       });
-
       if (!resp.ok) {
         const err = await resp.text();
-        console.error(`${provider} API error:`, err);
-        return new Response(JSON.stringify({ error: `${provider} API error (${resp.status}): ${err.substring(0, 500)}` }), {
-          status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return { ok: false, error: `OpenAI API error (${resp.status}): ${err.substring(0, 500)}` };
       }
-
       const data = await resp.json();
-      result = data.choices?.[0]?.message?.content;
+      const text = data.choices?.[0]?.message?.content;
+      return text ? { ok: true, result: text } : { ok: false, error: 'Empty response from OpenAI' };
+    }
 
-      if (!result) {
-        return new Response(JSON.stringify({ error: 'Empty response from AI provider' }), {
-          status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    } else if (provider === 'anthropic') {
+    async function callAnthropic(key: string, mdl: string): Promise<{ ok: boolean; result?: string; error?: string }> {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': api_key,
+          'x-api-key': key,
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model,
+          model: mdl,
           max_tokens: 8000,
           system: fullSystemPrompt,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image',
-                  source: { type: 'base64', media_type: 'image/png', data: image_base64 },
-                },
-                { type: 'text', text: userMessage },
-              ],
-            },
-          ],
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image_base64 } },
+            { type: 'text', text: userMessage },
+          ] }],
         }),
       });
-
       if (!resp.ok) {
         const err = await resp.text();
-        console.error('Anthropic API error:', err);
-        return new Response(JSON.stringify({ error: `Anthropic API error (${resp.status}): ${err.substring(0, 500)}` }), {
-          status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return { ok: false, error: `Anthropic API error (${resp.status}): ${err.substring(0, 500)}` };
       }
-
       const data = await resp.json();
-      result = data.content?.[0]?.text;
+      const text = data.content?.[0]?.text;
+      return text ? { ok: true, result: text } : { ok: false, error: 'Empty response from Anthropic' };
+    }
 
-      if (!result) {
-        return new Response(JSON.stringify({ error: 'Empty response from Anthropic' }), {
-          status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+    async function callProvider(p: string, key: string, mdl: string): Promise<{ ok: boolean; result?: string; error?: string }> {
+      if (p === 'openai') return callOpenAI(key, mdl);
+      if (p === 'openrouter') return callOpenAI(key, mdl, true);
+      if (p === 'anthropic') return callAnthropic(key, mdl);
+      return { ok: false, error: `Unknown provider: ${p}` };
+    }
+
+    // Try primary provider with 1 retry
+    let lastError = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await callProvider(provider, api_key, model);
+      if (res.ok && res.result) { result = res.result; break; }
+      lastError = res.error || 'Unknown error';
+      console.warn(`Attempt ${attempt + 1} with ${provider} failed: ${lastError}`);
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // Fallback: if primary failed and we have a different provider key available, try it
+    if (!result && !reqApiKey) {
+      const fallbackProvider = provider === 'openai' ? 'anthropic' : 'openai';
+      const fallbackKey = getKeyForProvider(fallbackProvider);
+      const fallbackModel = fallbackProvider === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-20250514';
+      if (fallbackKey) {
+        console.log(`Falling back to ${fallbackProvider}...`);
+        const res = await callProvider(fallbackProvider, fallbackKey, fallbackModel);
+        if (res.ok && res.result) {
+          result = res.result;
+        } else {
+          lastError = res.error || lastError;
+        }
       }
-    } else {
-      return new Response(JSON.stringify({ error: `Unknown provider: ${provider}. Supported: openai, anthropic, openrouter` }), {
-        status: 400,
+    }
+
+    if (!result) {
+      return new Response(JSON.stringify({ error: lastError || 'All AI providers failed.' }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
