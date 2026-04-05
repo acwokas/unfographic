@@ -76,8 +76,8 @@ export async function generatePptx(
             w: el.w,
             h: el.h,
             fill: el.fillColor ? { color: el.fillColor.replace('#', '') } : undefined,
-            border: el.borderColor
-              ? { color: el.borderColor.replace('#', ''), pt: el.borderWidth || 1, type: 'solid' }
+            line: el.borderColor
+              ? { color: el.borderColor.replace('#', ''), width: el.borderWidth || 1 }
               : undefined,
             rotate: el.rotation || 0,
           });
