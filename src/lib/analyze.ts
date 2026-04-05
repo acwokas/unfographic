@@ -8,12 +8,14 @@ export async function analyzeLayout(
   imageWidth?: number,
   imageHeight?: number
 ): Promise<LayoutAnalysis> {
+  const useCustomApiKey = Boolean(settings.useCustomApiKey && settings.apiKey);
+
   const { data, error } = await supabase.functions.invoke('analyze-layout', {
     body: {
       image_base64: imageBase64,
-      provider: settings.apiKey ? settings.provider : undefined,
-      model: settings.apiKey ? settings.model : undefined,
-      api_key: settings.apiKey || undefined,
+      provider: useCustomApiKey ? settings.provider : undefined,
+      model: useCustomApiKey ? settings.model : undefined,
+      api_key: useCustomApiKey ? settings.apiKey : undefined,
       slide_size: settings.slideSize,
       image_width: imageWidth,
       image_height: imageHeight,

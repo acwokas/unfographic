@@ -5,6 +5,7 @@ const STORAGE_KEY = 'slide-deconstructor-settings';
 const defaultSettings: AppSettings = {
   provider: 'openai',
   apiKey: '',
+  useCustomApiKey: false,
   model: 'gpt-4o',
   slideSize: '16:9',
 };

@@ -62,6 +62,7 @@ export interface LayoutAnalysis {
 export interface AppSettings {
   provider: 'openai' | 'anthropic' | 'openrouter';
   apiKey: string;
+  useCustomApiKey?: boolean;
   model: string;
   slideSize: '16:9' | '4:3';
 }
