@@ -85,7 +85,7 @@ export default function ConvertPage() {
     if (!job?.layout || !job.originalImage) return;
     try {
       await generatePptx(job.layout, job.originalImage, 'unfographic-export.pptx');
-      toast({ title: 'All done. Your slides are free now. 🎉' });
+      toast({ title: 'All done. Your slides are free now.' });
     } catch (e: any) {
       toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
     }
@@ -127,7 +127,7 @@ export default function ConvertPage() {
             </h2>
             {job.layout && (
               <span className="text-xs text-muted-foreground font-light">
-                {textCount} text · {imageCount} images
+                {textCount} text \u00b7 {imageCount} images
               </span>
             )}
           </div>
@@ -136,7 +136,7 @@ export default function ConvertPage() {
             {job.status === 'analyzing' && (
               <div className="flex flex-col items-center gap-4">
                 <div className="h-12 w-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <p className="text-muted-foreground font-light">Deconstructing… extracting every element.</p>
+                <p className="text-muted-foreground font-light">Deconstructing\u2026 extracting every element.</p>
               </div>
             )}
 
@@ -156,8 +156,14 @@ export default function ConvertPage() {
             {job.status === 'ready' && job.layout && (
               <div
                 ref={canvasRef}
-                className="relative w-full rounded-xl overflow-hidden border border-border bg-white"
-                style={{ aspectRatio: `${slideW} / ${slideH}` }}
+                className="relative w-full rounded-xl overflow-hidden border border-border"
+                style={{
+                  aspectRatio: `${slideW} / ${slideH}`,
+                  backgroundImage: `url(${job.imageDataUrl})`,
+                  backgroundSize: '100% 100%',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
                 onClick={() => { setSelectedId(null); setEditingId(null); }}
               >
                 {job.layout.elements.map((el) => {
@@ -179,7 +185,7 @@ export default function ConvertPage() {
                         {el.croppedDataUrl ? (
                           <img src={el.croppedDataUrl} alt={el.description} className="w-full h-full object-contain" draggable={false} />
                         ) : (
-                          <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground p-1 text-center">
+                          <div className="w-full h-full bg-muted/70 flex items-center justify-center text-xs text-muted-foreground p-1 text-center rounded">
                             {el.description}
                           </div>
                         )}
@@ -196,7 +202,12 @@ export default function ConvertPage() {
                       <div
                         key={el.id}
                         className={`absolute group ${isSelected ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-primary/40'}`}
-                        style={{ left, top, width, height }}
+                        style={{
+                          left, top, width, height,
+                          backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                          borderRadius: '2px',
+                          padding: '1px 3px',
+                        }}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); if (editingId !== el.id) setEditingId(null); }}
                         onDoubleClick={(e) => { e.stopPropagation(); setEditingId(el.id); }}
                       >
