@@ -205,6 +205,7 @@ export default function ConvertPage() {
                             fontWeight: el.bold ? 700 : 400,
                             fontStyle: el.italic ? 'italic' : 'normal',
                             color: el.fontColor ? `#${el.fontColor}` : '#000',
+                            backgroundColor: el.backgroundColor ? `#${el.backgroundColor}` : '#FFFFFF',
                             textAlign: el.align,
                             display: 'flex',
                             alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',

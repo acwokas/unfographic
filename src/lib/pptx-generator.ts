@@ -51,6 +51,7 @@ export async function generatePptx(
         align: el.align,
         valign: el.valign || 'top',
         margin: 0,
+        fill: { color: el.backgroundColor || 'FFFFFF' },
       });
     } catch (e) {
       console.warn('Failed to add text element:', el.id, e);
