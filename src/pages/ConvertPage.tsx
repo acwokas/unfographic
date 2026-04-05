@@ -34,12 +34,6 @@ export default function ConvertPage() {
     if (!job || !id) return;
 
     const settings = loadSettings();
-    if (!settings.apiKey) {
-      toast({ title: 'No API key', description: 'Please configure your API key in Settings.', variant: 'destructive' });
-      updateJob(id, { status: 'error', error: 'No API key configured' });
-      setJob({ ...job, status: 'error', error: 'No API key configured' });
-      return;
-    }
 
     updateJob(id, { status: 'analyzing' });
     setJob((prev) => prev ? { ...prev, status: 'analyzing' } : prev);

@@ -11,9 +11,9 @@ export async function analyzeLayout(
   const { data, error } = await supabase.functions.invoke('analyze-layout', {
     body: {
       image_base64: imageBase64,
-      provider: settings.provider,
-      model: settings.model,
-      api_key: settings.apiKey,
+      provider: settings.apiKey ? settings.provider : undefined,
+      model: settings.apiKey ? settings.model : undefined,
+      api_key: settings.apiKey || undefined,
       slide_size: settings.slideSize,
       image_width: imageWidth,
       image_height: imageHeight,
