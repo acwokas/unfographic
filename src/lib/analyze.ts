@@ -1,13 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
-import { LayoutAnalysis } from '@/types/layout';
-import { AppSettings } from '@/types/layout';
+import { AIResponse, AppSettings } from '@/types/layout';
 
 export async function analyzeLayout(
   imageBase64: string,
   settings: AppSettings,
   imageWidth?: number,
   imageHeight?: number
-): Promise<LayoutAnalysis> {
+): Promise<AIResponse> {
   const useCustomApiKey = Boolean(settings.useCustomApiKey && settings.apiKey);
 
   const { data, error } = await supabase.functions.invoke('analyze-layout', {
@@ -30,5 +29,5 @@ export async function analyzeLayout(
     throw new Error(data.error);
   }
 
-  return data as LayoutAnalysis;
+  return data as AIResponse;
 }

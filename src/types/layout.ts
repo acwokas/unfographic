@@ -32,6 +32,7 @@ export interface ImageRegionElement {
   y: number;
   w: number;
   h: number;
+  croppedDataUrl?: string;
 }
 
 export interface ShapeElement {
@@ -57,6 +58,44 @@ export interface LayoutAnalysis {
     backgroundColor: string;
   };
   elements: LayoutElement[];
+}
+
+// Raw AI response (before layout engine)
+export interface AILayoutSection {
+  name: string;
+  position: string;
+  description: string;
+}
+
+export interface AIImageRegion {
+  id: string;
+  description: string;
+  cropBox: { x: number; y: number; width: number; height: number };
+  positionHint: string;
+  section: string;
+}
+
+export interface AITextBlock {
+  id: string;
+  content: string;
+  type: 'title' | 'subtitle' | 'heading' | 'subheading' | 'body' | 'label' | 'caption';
+  positionHint: string;
+  section: string;
+  fontColor: string;
+  bold: boolean;
+  size: 'large' | 'medium' | 'small' | 'tiny';
+}
+
+export interface AIResponse {
+  imageWidth: number;
+  imageHeight: number;
+  layout: {
+    columns: number;
+    flow: string;
+    sections: AILayoutSection[];
+  };
+  imageRegions: AIImageRegion[];
+  textBlocks: AITextBlock[];
 }
 
 export interface AppSettings {

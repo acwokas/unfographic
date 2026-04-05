@@ -3,109 +3,91 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `You are a precision layout analysis engine. You deconstruct infographic images into editable PowerPoint components.
+const SYSTEM_PROMPT = `You are a layout deconstruction engine. You break infographic images into separate components for PowerPoint reconstruction.
 
-APPROACH:
-1. The ENTIRE original image becomes a full-slide background
-2. You extract EVERY SINGLE visible text string as a positioned text overlay with an opaque background
-3. In PowerPoint, each text box covers the original text beneath it so users see only the editable version
+TASK:
+Analyze this infographic and extract two types of elements:
+1. IMAGE REGIONS — visual areas (icons, illustrations, diagrams, photos, logos, decorative elements)
+2. TEXT BLOCKS — every piece of readable text
 
-YOUR TASK:
-Given an image of dimensions IMAGE_WIDTH × IMAGE_HEIGHT pixels, identify EVERY text element and return its pixel-based bounding box plus the background colour behind it.
+IMPORTANT: Extract ALL text. Do not skip anything. Every label, every caption, every heading, every description paragraph must be a separate text entry.
 
-COMPLETENESS IS CRITICAL:
-- You MUST extract ALL text — titles, subtitles, headers, body paragraphs, labels, captions, descriptions, watermarks, and attributions
-- If you see text in the image, it MUST appear in your output
-- Do NOT skip small text, description text, or secondary copy
-- Do NOT truncate text content — include the FULL text of every element
-- Count your extracted texts and compare against what you see — if you see 25 text areas, return 25 elements
+IMAGE REGIONS:
+- Identify each distinct visual element (icon, illustration, chart, diagram, logo, decorative graphic)
+- For each, provide a crop bounding box in PIXELS relative to the original image
+- Add 10px padding around each crop box
+- Give each a descriptive name
+- Position hint: describe where it sits in the original (e.g. "top-left", "center", "bottom-right")
 
-TEXT SEPARATION RULES:
-- Headers and their descriptions MUST be SEPARATE elements (never combine "Header\\nDescription" into one)
-- Example: "AI-Driven Data Architecture" is one element, "Applying machine learning and audience modelling within a privacy-compliant framework." is a SEPARATE element
-- Labels like "CRM", "DSPs", "Social Media" are each individual elements
-- Each bullet point or list item is a separate element
+TEXT BLOCKS:
+- Extract EVERY readable text string as a separate element
+- Headers and their descriptions must be SEPARATE entries
+- Labels like "CRM", "DSPs" are each separate entries
+- Include the FULL untruncated text
+- Classify each as: "title", "subtitle", "heading", "subheading", "body", "label", or "caption"
+- Position hint: describe where it sits (e.g. "top-left", "center-left", "bottom-center")
+- Estimate visual properties: bold, font colour (hex no #), approximate relative size (large/medium/small/tiny)
 
-BOUNDING BOXES:
-- Return x, y, w, h in PIXELS relative to the original image dimensions
-- x = pixels from left edge to LEFT side of text
-- y = pixels from top edge to TOP of text
-- w = pixel width of the text block
-- h = pixel height of the text block
-- ADD PADDING: make each bounding box ~10% larger than the visible text on all sides
-  - This ensures the opaque background fully covers the original text even if positioning is slightly off
-  - So if text is 200px wide, return w=220 and shift x left by 10px
-
-BACKGROUND COLOUR (bgColor):
-- For EVERY text element, detect the dominant colour of the area DIRECTLY BEHIND the text in the image
-- This is REQUIRED — every element must have a bgColor
-- If text is on a white/light area: return "FFFFFF" or the actual light colour
-- If text is on a dark area: return that dark colour
-- If text is on a gradient: pick the average/dominant colour
-- If text is on a coloured banner or shape: return that shape's colour
-- The bgColor will be used as an opaque fill to COVER the original text, so accuracy matters
-
-FONT SIZE:
-- Estimate the cap-height of the text in pixels as fontSizePx
-- Large titles: 30-50px
-- Section headers: 18-28px
-- Body/descriptions: 12-18px
-- Small labels/captions: 9-14px
-
-VISUAL PROPERTIES:
-- fontColor: hex color WITHOUT # prefix (e.g. "FFFFFF")
-- bold: true for headings and emphasized text
-- align: "left", "center", or "right"
-
-ELEMENT ORDER:
-- Top to bottom, left to right
-- Titles first, then section headers, then body text, then captions
+LAYOUT ZONES:
+Also describe the overall layout structure of the infographic:
+- How many main sections/columns are there?
+- What is the flow direction? (left-to-right, top-to-bottom, radial, etc.)
+- What are the major groupings of content?
 
 OUTPUT FORMAT — Return ONLY valid JSON (no markdown, no code fences):
 
 {
-  "imageWidth": IMAGE_WIDTH,
-  "imageHeight": IMAGE_HEIGHT,
-  "texts": [
+  "imageWidth": 1920,
+  "imageHeight": 1080,
+  "layout": {
+    "columns": 3,
+    "flow": "left-to-right",
+    "sections": [
+      {"name": "Input/Sources", "position": "left", "description": "Data sources feeding into the system"},
+      {"name": "Processing", "position": "center", "description": "Core processing engine"},
+      {"name": "Output/Activation", "position": "right", "description": "Output channels"}
+    ]
+  },
+  "imageRegions": [
+    {
+      "id": "icon-crm",
+      "description": "CRM system icon",
+      "cropBox": {"x": 50, "y": 280, "width": 120, "height": 100},
+      "positionHint": "left",
+      "section": "Input/Sources"
+    }
+  ],
+  "textBlocks": [
     {
       "id": "title-main",
       "content": "The Modern Agency Operating System:",
-      "x": 110,
-      "y": 35,
-      "w": 850,
-      "h": 65,
-      "fontSizePx": 40,
+      "type": "title",
+      "positionHint": "top-left",
+      "section": "global",
       "fontColor": "1A2744",
-      "bgColor": "E8F0ED",
       "bold": true,
-      "align": "left"
+      "size": "large"
     },
     {
-      "id": "subtitle-main",
-      "content": "From Raw Data to Strategic Growth",
-      "x": 110,
-      "y": 105,
-      "w": 700,
-      "h": 50,
-      "fontSizePx": 28,
+      "id": "desc-section1",
+      "content": "Applying machine learning within a privacy-compliant framework.",
+      "type": "body",
+      "positionHint": "center",
+      "section": "Processing",
       "fontColor": "444444",
-      "bgColor": "E8F0ED",
       "bold": false,
-      "align": "left"
+      "size": "small"
     }
   ]
 }
 
-CHECKLIST BEFORE RESPONDING:
-- Did I extract the main title? ✓
-- Did I extract the subtitle? ✓
-- Did I extract EVERY section header? ✓
-- Did I extract EVERY body description as a SEPARATE element from its header? ✓
-- Did I extract ALL labels (CRM, DSPs, Social Media, etc.)? ✓
-- Did I extract small text, captions, and watermarks? ✓
-- Does EVERY element have a bgColor? ✓
-- Did I add padding to bounding boxes? ✓
-- Is the content COMPLETE (not truncated)? ✓`;
+CHECKLIST:
+- Every visible icon, illustration, and diagram is in imageRegions? ✓
+- Every heading is in textBlocks? ✓
+- Every body/description paragraph is a SEPARATE entry from its heading? ✓
+- Every small label (CRM, DSPs, etc.) is included? ✓
+- Text content is COMPLETE and not truncated? ✓
+- cropBox coordinates are in pixels with 10px padding? ✓`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -128,26 +110,21 @@ Deno.serve(async (req) => {
 
     if (!image_base64) {
       return new Response(JSON.stringify({ error: 'Missing required field: image_base64' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (!api_key) {
       return new Response(JSON.stringify({ error: 'No API key provided and no server default configured.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const slideW = slide_size === '4:3' ? 10 : 10;
-    const slideH = slide_size === '4:3' ? 7.5 : 5.625;
 
     const dimHint = image_width && image_height
       ? `Image dimensions: ${image_width}px wide × ${image_height}px tall.`
       : 'Estimate the image dimensions from the image itself.';
 
-    const userMessage = `Analyze this infographic. ${dimHint} Return pixel-based bounding boxes for every text element.`;
+    const userMessage = `Analyze this infographic. ${dimHint} Extract all image regions and text blocks. Return the structured JSON.`;
 
     let result: string | null = null;
 
@@ -243,8 +220,7 @@ Deno.serve(async (req) => {
 
     if (!result) {
       return new Response(JSON.stringify({ error: lastError || 'All AI providers failed.' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -259,64 +235,19 @@ Deno.serve(async (req) => {
     } catch (parseErr) {
       console.error('Failed to parse AI response as JSON:', cleaned.substring(0, 200));
       return new Response(JSON.stringify({ error: 'AI returned invalid JSON. Try re-analyzing.' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Convert pixel-based AI response to inch-based slide coordinates
-    const imgW = aiResponse.imageWidth || image_width || 1920;
-    const imgH = aiResponse.imageHeight || image_height || 1080;
-
-    const elements = [
-      {
-        type: 'image_region' as const,
-        id: 'background',
-        description: 'Full infographic background',
-        cropBox: { x: 0, y: 0, width: imgW, height: imgH },
-        x: 0, y: 0, w: slideW, h: slideH,
-      },
-      ...(aiResponse.texts || []).map((t: any) => {
-        const rawX = (t.x / imgW) * slideW;
-        const rawY = (t.y / imgH) * slideH;
-        const rawW = (t.w / imgW) * slideW;
-        const rawH = (t.h / imgH) * slideH;
-        const padX = rawW * 0.05;
-        const padY = rawH * 0.1;
-        return {
-          type: 'text' as const,
-          id: t.id || 'text',
-          content: t.content || '',
-          x: parseFloat((rawX - padX).toFixed(3)),
-          y: parseFloat((rawY - padY).toFixed(3)),
-          w: parseFloat((rawW + padX * 2).toFixed(3)),
-          h: parseFloat((rawH + padY * 2).toFixed(3)),
-          fontSize: Math.round(t.fontSizePx * (slideH / imgH) * 72),
-          fontFace: 'Arial',
-          fontColor: (t.fontColor || '000000').replace('#', ''),
-          bold: !!t.bold,
-          italic: false,
-          align: t.align || 'left',
-          valign: 'middle',
-          backgroundColor: (t.bgColor || 'FFFFFF').replace('#', ''),
-        };
-      }),
-    ];
-
-    const layout = {
-      slide: { width: slideW, height: slideH, backgroundColor: 'FFFFFF' },
-      elements,
-    };
-
-    return new Response(JSON.stringify(layout), {
+    // Pass through the raw AI response — layout engine runs client-side
+    return new Response(JSON.stringify(aiResponse), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Internal error';
     console.error('Edge function error:', message);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
