@@ -209,18 +209,20 @@ Deno.serve(async (req) => {
       return { ok: false, error: `Unknown provider: ${p}` };
     }
 
-    // Try primary provider with 1 retry
+    // Try primary provider with 1 retry (skip retry for auth errors)
     let lastError = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await callProvider(provider, api_key, model);
       if (res.ok && res.result) { result = res.result; break; }
       lastError = res.error || 'Unknown error';
       console.warn(`Attempt ${attempt + 1} with ${provider} failed: ${lastError}`);
+      // Don't retry on auth errors (401) — key is simply invalid
+      if (lastError.includes('(401)')) break;
       if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
     }
 
-    // Fallback: if primary failed and we have a different provider key available, try it
-    if (!result && !reqApiKey) {
+    // Fallback: try a different provider with server key if primary failed
+    if (!result) {
       const fallbackProvider = provider === 'openai' ? 'anthropic' : 'openai';
       const fallbackKey = getKeyForProvider(fallbackProvider);
       const fallbackModel = fallbackProvider === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-20250514';
