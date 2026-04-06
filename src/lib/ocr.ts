@@ -20,7 +20,7 @@ interface OCRWord {
  * instead of relying on Tesseract's line detection. Tesseract often merges
  * text from completely different horizontal regions of an infographic into
  * a single "line", producing garbage like:
- *   "Data Foundation Activation and Gus"
+ *   "Data Foundation Activation and § ¢ Gus"
  * By clustering words based on spatial proximity, we keep text blocks
  * that are far apart horizontally as separate lines.
  */
@@ -50,10 +50,10 @@ export async function runOCR(imageDataUrl: string): Promise<OCRLine[]> {
     }
   }
 
-  // Filter out low-quality words
+  // Filter out low-quality words (lenient to catch small labels like CRM, DSPs)
   const filtered = words
-    .filter(w => w.confidence >= 60)
-    .filter(w => w.bbox.width >= 8 && w.bbox.height >= 6)
+    .filter(w => w.confidence >= 45)
+    .filter(w => w.bbox.width >= 6 && w.bbox.height >= 5)
     .filter(w => {
       // Word must have at least 1 alphanumeric character
       const cleaned = w.text.replace(/[^a-zA-Z0-9]/g, '');
@@ -92,20 +92,20 @@ export async function runOCR(imageDataUrl: string): Promise<OCRLine[]> {
     };
   });
 
-  // Final line-level filters
+  // Final line-level filters (lenient to keep short labels)
   return lines
-    .filter(l => l.confidence >= 65)
+    .filter(l => l.confidence >= 55)
     .filter(l => {
-      // Need at least 3 alphanumeric chars
+      // Need at least 2 alphanumeric chars (was 3 — lowered to catch "CRM", "DSPs")
       const cleaned = l.text.replace(/[^a-zA-Z0-9]/g, '');
-      return cleaned.length >= 3;
+      return cleaned.length >= 2;
     })
     .filter(l => {
-      // At least 50% alphanumeric (rejects leftover symbol noise)
+      // At least 45% alphanumeric (rejects leftover symbol noise)
       const alphaNum = l.text.replace(/[^a-zA-Z0-9 ]/g, '').trim();
-      return alphaNum.length >= l.text.trim().length * 0.5;
+      return alphaNum.length >= l.text.trim().length * 0.45;
     })
-    .filter(l => l.bbox.width >= 20 && l.bbox.height >= 8);
+    .filter(l => l.bbox.width >= 15 && l.bbox.height >= 6);
 }
 
 /**
