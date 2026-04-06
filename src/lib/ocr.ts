@@ -73,7 +73,18 @@ export async function runOCR(imageDataUrl: string): Promise<OCRLine[]> {
     // Sort words left-to-right within cluster
     cluster.sort((a, b) => a.bbox.x - b.bbox.x);
 
-    const text = cluster.map(w => w.text).join(' ');
+    // Smart joining: if gap between adjacent words is tiny, join without space
+    // (they're fragments of the same word broken by OCR)
+    let text = cluster[0]?.text || '';
+    for (let k = 1; k < cluster.length; k++) {
+      const prev = cluster[k - 1];
+      const curr = cluster[k];
+      const gap = curr.bbox.x - (prev.bbox.x + prev.bbox.width);
+      const avgCharW = (prev.bbox.width / Math.max(prev.text.length, 1)
+                      + curr.bbox.width / Math.max(curr.text.length, 1)) / 2;
+      text += (gap < avgCharW * 0.6) ? '' : ' ';
+      text += curr.text;
+    }
     const minX = Math.min(...cluster.map(w => w.bbox.x));
     const minY = Math.min(...cluster.map(w => w.bbox.y));
     const maxX = Math.max(...cluster.map(w => w.bbox.x + w.bbox.width));
