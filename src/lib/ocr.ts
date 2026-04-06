@@ -190,13 +190,63 @@ function areWordsNearby(a: OCRWord, b: OCRWord): boolean {
 }
 
 /**
- * Group nearby OCR lines into logical text blocks.
- * DISABLED: We keep each line separate so every element has its own
- * accurate bounding box. Grouping inflated font sizes and caused overflow.
+ * Group nearby OCR lines into logical text blocks (1-2 lines each).
+ * Lines are merged when they are vertically close and horizontally overlapping,
+ * producing cleaner, more readable text boxes on the slide.
  */
 export function groupOCRLines(lines: OCRLine[]): OCRLine[] {
-  // Just sort by vertical position - no merging
-  return [...lines].sort((a, b) => a.bbox.y - b.bbox.y);
+  if (lines.length === 0) return [];
+
+  const sorted = [...lines].sort((a, b) => a.bbox.y - b.bbox.y);
+  const used = new Set<number>();
+  const groups: OCRLine[] = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (used.has(i)) continue;
+    used.add(i);
+
+    let group = { ...sorted[i] };
+    const gBottom = () => group.bbox.y + group.bbox.height;
+    const gRight = () => group.bbox.x + group.bbox.width;
+
+    // Try to merge the next few lines into this group (max 3 lines per block)
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (used.has(j)) continue;
+      const currentLineCount = (group.text.match(/\n/g) || []).length + 1;
+      if (currentLineCount >= 3) break; // Cap at 3 lines per block
+      const candidate = sorted[j];
+
+      // Vertical gap: space between bottom of group and top of candidate
+      const vGap = candidate.bbox.y - gBottom();
+      const avgH = group.bbox.height / ((group.text.match(/\n/g) || []).length + 1);
+      // Allow merging if vertical gap is < 1.8x average line height
+      if (vGap > avgH * 1.8 || vGap < 0) continue;
+
+      // Horizontal overlap check: lines must share significant horizontal space
+      const overlapLeft = Math.max(group.bbox.x, candidate.bbox.x);
+      const overlapRight = Math.min(gRight(), candidate.bbox.x + candidate.bbox.width);
+      const hOverlap = overlapRight - overlapLeft;
+      const narrowerWidth = Math.min(group.bbox.width, candidate.bbox.width);
+      if (hOverlap < narrowerWidth * 0.3) continue;
+
+      // Merge: expand bbox, join text
+      const newMinX = Math.min(group.bbox.x, candidate.bbox.x);
+      const newMinY = Math.min(group.bbox.y, candidate.bbox.y);
+      const newMaxX = Math.max(gRight(), candidate.bbox.x + candidate.bbox.width);
+      const newMaxY = Math.max(gBottom(), candidate.bbox.y + candidate.bbox.height);
+
+      group = {
+        text: group.text + '\n' + candidate.text,
+        bbox: { x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY },
+        confidence: (group.confidence + candidate.confidence) / 2,
+      };
+      used.add(j);
+    }
+
+    groups.push(group);
+  }
+
+  return groups;
 }
 
 /**
@@ -209,9 +259,10 @@ export function ocrToAIResponse(
   imgH: number,
   aiImageRegions?: AIResponse['imageRegions'],
 ): AIResponse {
-  const sorted = [...ocrLines].sort((a, b) => a.bbox.y - b.bbox.y);
+  // Group nearby lines into logical blocks (subtitle + body) before creating text blocks
+  const grouped = groupOCRLines(ocrLines);
 
-  const textBlocks: AITextBlock[] = sorted.map((line, i) => {
+  const textBlocks: AITextBlock[] = grouped.map((line, i) => {
     // Classify text type from line height relative to image
     const relH = line.bbox.height / imgH;
     let type: AITextBlock['type'] = 'body';
@@ -229,7 +280,7 @@ export function ocrToAIResponse(
       section: 'main',
       fontColor: '000000',
       bold: type === 'title' || type === 'heading',
-      size: relH > 0.025 ? 'large' : relH > 0.015 ? 'medium' : 'small',
+      size: relH > 0.025 ? 'large' : relH > 0.015 ? 'medium' : 'small' as any,
       boundingBox: line.bbox,
     };
   });
