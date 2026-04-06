@@ -75,18 +75,21 @@ export function buildSlideLayout(
       h = Math.max(h, 0.12);
 
       // Derive font size from bounding box height (inches -> points)
-      // Factor 0.80: accounts for line spacing overhead in PowerPoint rendering.
-      // Each OCR line is a single line of text, so height = actual line height.
-      fs = Math.round(h * 72 * 0.80);
+      // For multi-line blocks (text with \n), divide height by line count
+      // so font size reflects a single line, not the full merged block.
+      const lineCount = (t.content.match(/\n/g) || []).length + 1;
+      const lineH = h / lineCount;
+      fs = Math.round(lineH * 72 * 0.80);
       fs = Math.max(5, Math.min(fs, 28));
 
       // Estimate if text fits in one line at this font size.
       // Average char width in Arial â 0.52 Ã font size (points) / 72 (inches)
       const estCharWidth = 0.52 * fs / 72;
-      const estTextWidth = t.content.length * estCharWidth;
-      if (estTextWidth > w && t.content.length > 0) {
+      const longestLine = t.content.split('\n').reduce((a, b) => a.length > b.length ? a : b, '');
+      const estTextWidth = longestLine.length * estCharWidth;
+      if (estTextWidth > w && longestLine.length > 0) {
         // Text would overflow â shrink font to fit in the box width
-        const fittedFs = Math.floor((w / (t.content.length * 0.52)) * 72);
+        const fittedFs = Math.floor((w / (longestLine.length * 0.52)) * 72);
         fs = Math.max(5, Math.min(fs, fittedFs));
       }
 
