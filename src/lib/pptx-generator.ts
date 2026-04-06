@@ -27,14 +27,20 @@ function sampleRegionColor(img: HTMLImageElement, x: number, y: number, w: numbe
     const pw = Math.max(1, Math.round((w / slideW) * img.naturalWidth));
     const ph = Math.max(1, Math.round((h / slideH) * img.naturalHeight));
 
-    // Sample edges and center
+    // Sample OUTSIDE the text area (offset outward) to avoid picking up text pixels.
+    const outset = Math.max(4, Math.round(ph * 0.15));
     const samples: number[][] = [];
     const samplePoints = [
-      [px + 2, py + 2],
-      [px + pw - 2, py + 2],
-      [px + 2, py + ph - 2],
-      [px + pw - 2, py + ph - 2],
-      [px + Math.floor(pw / 2), py + Math.floor(ph / 2)],
+      [px + Math.floor(pw / 4), py - outset],
+      [px + Math.floor(pw / 2), py - outset],
+      [px + Math.floor(3 * pw / 4), py - outset],
+      [px + Math.floor(pw / 4), py + ph + outset],
+      [px + Math.floor(pw / 2), py + ph + outset],
+      [px + Math.floor(3 * pw / 4), py + ph + outset],
+      [px - outset, py + Math.floor(ph / 2)],
+      [px + pw + outset, py + Math.floor(ph / 2)],
+      [px - outset, py - outset],
+      [px + pw + outset, py + ph + outset],
     ];
 
     for (const [sx, sy] of samplePoints) {
@@ -44,12 +50,17 @@ function sampleRegionColor(img: HTMLImageElement, x: number, y: number, w: numbe
       samples.push([pixel[0], pixel[1], pixel[2]]);
     }
 
-    const avg = samples.reduce(
-      (acc, s) => [acc[0] + s[0], acc[1] + s[1], acc[2] + s[2]],
-      [0, 0, 0]
-    ).map(v => Math.round(v / samples.length));
+    // Use median per channel (robust against outliers like text pixels)
+    const median = (arr: number[]) => {
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    };
+    const r = median(samples.map(s => s[0]));
+    const g = median(samples.map(s => s[1]));
+    const b = median(samples.map(s => s[2]));
 
-    return avg.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
   } catch {
     return 'FFFFFF';
   }
@@ -109,7 +120,7 @@ export async function generatePptx(
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
-        const expand = 0.02; // extra padding around cover
+        const expand = 0.05; // extra padding around cover (generous to hide original text)
         const cx = Math.max(0, el.x - expand);
         const cy = Math.max(0, el.y - expand);
         const cw = el.w + expand * 2;
