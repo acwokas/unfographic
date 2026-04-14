@@ -1,42 +1,41 @@
-import { AIResponse, LayoutAnalysis, LayoutElement, TextElement, ImageRegionElement } from '@/types/layout';
-import { cropImageRegion } from './image-utils';
+import { AIResponse, LayoutAnalysis, LayoutElement, TextElement } from '@/types/layout';
+import { cropImageRegion, expandCropBox } from './image-utils';
 
 const SLIDE_W = 10;
 const SLIDE_H = 5.625;
 const MARGIN = 0.15;
 const PAD = 0.04;
 
-// Fallback zone grid (used only when boundingBox is missing from AI response)
 const ZONE_GRID: Record<string, { x: number; y: number }> = {
-  'top-left':     { x: 0.25, y: 0.12 },
-  'top-center':   { x: 3.00, y: 0.80 },
-  'top-right':    { x: 8.00, y: 0.25 },
-  'top':          { x: 0.25, y: 0.12 },
-  'center-left':  { x: 0.25, y: 2.00 },
-  'center':       { x: 3.00, y: 1.70 },
-  'center-right': { x: 6.00, y: 1.50 },
-  'left':         { x: 0.25, y: 2.00 },
-  'right':        { x: 7.80, y: 2.30 },
-  'bottom-left':  { x: 0.25, y: 3.70 },
-  'bottom-center':{ x: 4.00, y: 4.00 },
-  'bottom-right': { x: 7.00, y: 4.00 },
-  'bottom':       { x: 3.50, y: 4.00 },
+  'top-left': { x: 0.25, y: 0.12 },
+  'top-center': { x: 3.0, y: 0.8 },
+  'top-right': { x: 8.0, y: 0.25 },
+  top: { x: 0.25, y: 0.12 },
+  'center-left': { x: 0.25, y: 2.0 },
+  center: { x: 3.0, y: 1.7 },
+  'center-right': { x: 6.0, y: 1.5 },
+  left: { x: 0.25, y: 2.0 },
+  right: { x: 7.8, y: 2.3 },
+  'bottom-left': { x: 0.25, y: 3.7 },
+  'bottom-center': { x: 4.0, y: 4.0 },
+  'bottom-right': { x: 7.0, y: 4.0 },
+  bottom: { x: 3.5, y: 4.0 },
 };
 
 const ZONE_MAX_W: Record<string, number> = {
-  'top-left':     5.00,
-  'top-center':   2.80,
-  'top-right':    1.80,
-  'top':          5.00,
-  'center-left':  2.50,
-  'center':       2.80,
-  'center-right': 2.60,
-  'left':         2.50,
-  'right':        2.00,
-  'bottom-left':  3.00,
-  'bottom-center': 3.00,
-  'bottom-right': 2.80,
-  'bottom':       3.00,
+  'top-left': 5.0,
+  'top-center': 2.8,
+  'top-right': 1.8,
+  top: 5.0,
+  'center-left': 2.5,
+  center: 2.8,
+  'center-right': 2.6,
+  left: 2.5,
+  right: 2.0,
+  'bottom-left': 3.0,
+  'bottom-center': 3.0,
+  'bottom-right': 2.8,
+  bottom: 3.0,
 };
 
 export function buildSlideLayout(
@@ -51,60 +50,61 @@ export function buildSlideLayout(
   const elements: LayoutElement[] = [];
   const zoneOffsets: Record<string, number> = {};
 
-  // Font sizes by text type (used as fallback when no boundingBox)
   const typeFontSize: Record<string, number> = {
-    title: 22, subtitle: 16, heading: 13, subheading: 11,
-    body: 9, label: 8, caption: 7,
+    title: 22,
+    subtitle: 16,
+    heading: 13,
+    subheading: 11,
+    body: 9,
+    label: 8,
+    caption: 7,
   };
 
-  // Process text blocks
   for (const t of (aiResponse.textBlocks || [])) {
     let fs = typeFontSize[t.type] || 10;
-    let x: number, y: number, w: number, h: number;
+    let x: number;
+    let y: number;
+    let w: number;
+    let h: number;
     let anchored = false;
 
     if (t.boundingBox) {
-      // Pixel-precise positioning: convert bounding box from pixels to inches
       x = t.boundingBox.x * scaleX;
       y = t.boundingBox.y * scaleY;
       w = t.boundingBox.width * scaleX;
       h = t.boundingBox.height * scaleY;
 
-      // Enforce reasonable minimums
       w = Math.max(w, 0.05);
       h = Math.max(h, 0.05);
 
-      // Derive font size from bounding box height (inches -> points)
-      // For multi-line blocks (text with \n), divide height by line count
-      // so font size reflects a single line, not the full merged block.
       const lineCount = (t.content.match(/\n/g) || []).length + 1;
       const lineH = h / lineCount;
-      fs = Math.round(lineH * 72 * 0.70);
+      fs = Math.round(lineH * 72 * 0.7);
       fs = Math.max(5, Math.min(fs, 22));
 
-      // Estimate if text fits in one line at this font size.
-      // Average char width in Arial â 0.52 Ã font size (points) / 72 (inches)
       const estCharWidth = 0.52 * fs / 72;
-      const longestLine = t.content.split('\n').reduce((a, b) => a.length > b.length ? a : b, '');
+      const longestLine = t.content.split('\n').reduce((a, b) => (a.length > b.length ? a : b), '');
       const estTextWidth = longestLine.length * estCharWidth;
       if (estTextWidth > w && longestLine.length > 0) {
-        // Text would overflow â shrink font to fit in the box width
         const fittedFs = Math.floor((w / (longestLine.length * 0.52)) * 72);
         fs = Math.max(5, Math.min(fs, fittedFs));
       }
 
       anchored = true;
     } else {
-      // Fallback: zone-based positioning
       const hint = (t.positionHint || 'center').toLowerCase().trim();
-      const base = ZONE_GRID[hint] || ZONE_GRID['center'];
-      const maxW = ZONE_MAX_W[hint] || 2.80;
+      const base = ZONE_GRID[hint] || ZONE_GRID.center;
+      const maxW = ZONE_MAX_W[hint] || 2.8;
       const typeSizes: Record<string, [number, number]> = {
-        title: [5.00, 0.42], subtitle: [5.00, 0.32],
-        heading: [2.80, 0.50], subheading: [2.60, 0.28],
-        body: [2.60, 0.42], label: [1.40, 0.22], caption: [2.20, 0.20],
+        title: [5.0, 0.42],
+        subtitle: [5.0, 0.32],
+        heading: [2.8, 0.5],
+        subheading: [2.6, 0.28],
+        body: [2.6, 0.42],
+        label: [1.4, 0.22],
+        caption: [2.2, 0.2],
       };
-      const [tw, th] = typeSizes[t.type] || [2.20, 0.28];
+      const [tw, th] = typeSizes[t.type] || [2.2, 0.28];
       w = Math.min(tw, maxW);
       h = th;
       if (!(hint in zoneOffsets)) zoneOffsets[hint] = base.y;
@@ -113,7 +113,6 @@ export function buildSlideLayout(
       zoneOffsets[hint] += h + 0.02;
     }
 
-    // Clamp to slide (allow edge-to-edge for anchored elements)
     x = Math.max(0, Math.min(x, SLIDE_W - w));
     y = Math.max(0, Math.min(y, SLIDE_H - h));
 
@@ -121,24 +120,28 @@ export function buildSlideLayout(
       type: 'text',
       id: t.id,
       content: t.content,
-      x, y, w, h,
+      x,
+      y,
+      w,
+      h,
       fontSize: fs,
       fontFace: 'Arial',
       fontColor: (t.fontColor || '000000').replace('#', ''),
       bold: t.bold || t.type === 'heading' || t.type === 'subheading',
       italic: false,
-      align: 'left' as const,
-      valign: 'top' as const,
+      align: 'left',
+      valign: 'top',
       anchored,
     });
   }
 
-  // Process image regions: pixel-precise positioning using cropBox
   for (const r of (aiResponse.imageRegions || [])) {
-    let x = r.cropBox.x * scaleX;
-    let y = r.cropBox.y * scaleY;
-    let w = r.cropBox.width * scaleX;
-    let h = r.cropBox.height * scaleY;
+    const expandedCropBox = expandCropBox(r.cropBox, imgW, imgH, r.description);
+
+    let x = expandedCropBox.x * scaleX;
+    let y = expandedCropBox.y * scaleY;
+    let w = expandedCropBox.width * scaleX;
+    let h = expandedCropBox.height * scaleY;
 
     w = Math.max(w, 0.05);
     h = Math.max(h, 0.05);
@@ -149,10 +152,10 @@ export function buildSlideLayout(
     const origScaleX = originalImage.naturalWidth / imgW;
     const origScaleY = originalImage.naturalHeight / imgH;
     const scaledCropBox = {
-      x: r.cropBox.x * origScaleX,
-      y: r.cropBox.y * origScaleY,
-      width: r.cropBox.width * origScaleX,
-      height: r.cropBox.height * origScaleY,
+      x: expandedCropBox.x * origScaleX,
+      y: expandedCropBox.y * origScaleY,
+      width: expandedCropBox.width * origScaleX,
+      height: expandedCropBox.height * origScaleY,
     };
 
     let croppedDataUrl: string | undefined;
@@ -166,8 +169,11 @@ export function buildSlideLayout(
       type: 'image_region',
       id: r.id,
       description: r.description,
-      cropBox: r.cropBox,
-      x, y, w, h,
+      cropBox: scaledCropBox,
+      x,
+      y,
+      w,
+      h,
       croppedDataUrl,
       anchored: true,
     });
@@ -202,7 +208,7 @@ function resolveCollisions(els: LayoutElement[]): void {
 
   function overlaps(a: LayoutElement, b: LayoutElement): boolean {
     return a.x < b.x + b.w + PAD && a.x + a.w + PAD > b.x
-        && a.y < b.y + b.h + PAD && a.y + a.h + PAD > b.y;
+      && a.y < b.y + b.h + PAD && a.y + a.h + PAD > b.y;
   }
 
   function overlapArea(a: LayoutElement, b: LayoutElement): number {
@@ -211,15 +217,10 @@ function resolveCollisions(els: LayoutElement[]): void {
     return ox * oy;
   }
 
-  // Phase 1: Handle anchored-vs-anchored overlaps
-  // IMPORTANT: Never trim or remove text elements that overlap with image regions.
-  // Text should simply layer on top of images in the preview (z-order handles this).
   for (let i = 0; i < els.length; i++) {
     for (let j = i + 1; j < els.length; j++) {
       if (!overlaps(els[i], els[j])) continue;
       if (!isAnchored(els[i]) || !isAnchored(els[j])) continue;
-
-      // Skip if one is text and one is image — they can coexist (text renders on top)
       if (els[i].type !== els[j].type) continue;
 
       const aArea = els[i].w * els[i].h;
@@ -230,7 +231,6 @@ function resolveCollisions(els: LayoutElement[]): void {
       const oArea = overlapArea(smaller, larger);
       const pct = oArea / (smaller.w * smaller.h);
 
-      // Only remove if same-type elements overlap heavily
       if (pct > 0.5) {
         els.splice(els.indexOf(smaller), 1);
         if (j > i) j--;
@@ -252,14 +252,19 @@ function resolveCollisions(els: LayoutElement[]): void {
         trims.sort((a, b) => a[1] - b[1]);
         const [dir, amount] = trims[0];
         if (dir === 'r') smaller.w -= amount + PAD;
-        else if (dir === 'l') { smaller.x += amount + PAD; smaller.w -= amount + PAD; }
-        else if (dir === 'd') smaller.h -= amount + PAD;
-        else if (dir === 'u') { smaller.y += amount + PAD; smaller.h -= amount + PAD; }
+        else if (dir === 'l') {
+          smaller.x += amount + PAD;
+          smaller.w -= amount + PAD;
+        } else if (dir === 'd') {
+          smaller.h -= amount + PAD;
+        } else if (dir === 'u') {
+          smaller.y += amount + PAD;
+          smaller.h -= amount + PAD;
+        }
       }
     }
   }
 
-  // Phase 2: Standard collision resolution for non-anchored elements
   for (let pass = 0; pass < 100; pass++) {
     let moved = false;
     for (let i = 0; i < els.length; i++) {
@@ -267,17 +272,22 @@ function resolveCollisions(els: LayoutElement[]): void {
         if (!overlaps(els[i], els[j])) continue;
         if (isAnchored(els[i]) && isAnchored(els[j])) continue;
 
-        let fixed: LayoutElement, movable: LayoutElement;
+        let fixed: LayoutElement;
+        let movable: LayoutElement;
         if (isAnchored(els[i])) {
-          fixed = els[i]; movable = els[j];
+          fixed = els[i];
+          movable = els[j];
         } else if (isAnchored(els[j])) {
-          fixed = els[j]; movable = els[i];
+          fixed = els[j];
+          movable = els[i];
         } else {
-          fixed = els[i]; movable = els[j];
+          fixed = els[i];
+          movable = els[j];
         }
 
         moved = true;
-        const a = fixed, b = movable;
+        const a = fixed;
+        const b = movable;
         const pR = (a.x + a.w + PAD) - b.x;
         const pL = (b.x + b.w + PAD) - a.x;
         const pD = (a.y + a.h + PAD) - b.y;
@@ -308,7 +318,6 @@ function resolveCollisions(els: LayoutElement[]): void {
     if (!moved) break;
   }
 
-  // Phase 3: Safety pass
   for (let pass = 0; pass < 30; pass++) {
     let moved = false;
     for (let i = 0; i < els.length; i++) {

@@ -1,16 +1,40 @@
+type CropBox = { x: number; y: number; width: number; height: number };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function expandCropBox(
+  cropBox: CropBox,
+  imageWidth: number,
+  imageHeight: number,
+  description = ''
+): CropBox {
+  const isSmallVisual = Math.max(cropBox.width, cropBox.height) <= 96 || /icon|logo/i.test(description);
+  const padX = clamp(cropBox.width * (isSmallVisual ? 0.35 : 0.12), isSmallVisual ? 10 : 12, isSmallVisual ? 18 : 32);
+  const padY = clamp(cropBox.height * (isSmallVisual ? 0.35 : 0.14), isSmallVisual ? 10 : 12, isSmallVisual ? 18 : 32);
+
+  const x = clamp(cropBox.x - padX, 0, Math.max(0, imageWidth - 1));
+  const y = clamp(cropBox.y - padY, 0, Math.max(0, imageHeight - 1));
+  const right = clamp(cropBox.x + cropBox.width + padX, x + 1, imageWidth);
+  const bottom = clamp(cropBox.y + cropBox.height + padY, y + 1, imageHeight);
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
+
 export function cropImageRegion(
   img: HTMLImageElement,
-  cropBox: { x: number; y: number; width: number; height: number },
-  paddingPct = 0.08
+  cropBox: CropBox
 ): string {
-  // Add padding around the crop box to avoid cutting off edges of icons/images
-  const padX = cropBox.width * paddingPct;
-  const padY = cropBox.height * paddingPct;
-
-  const sx = Math.max(0, cropBox.x - padX);
-  const sy = Math.max(0, cropBox.y - padY);
-  const sw = Math.min(img.naturalWidth - sx, cropBox.width + padX * 2);
-  const sh = Math.min(img.naturalHeight - sy, cropBox.height + padY * 2);
+  const sx = Math.max(0, Math.round(cropBox.x));
+  const sy = Math.max(0, Math.round(cropBox.y));
+  const sw = Math.max(1, Math.round(Math.min(cropBox.width, img.naturalWidth - sx)));
+  const sh = Math.max(1, Math.round(Math.min(cropBox.height, img.naturalHeight - sy)));
 
   const canvas = document.createElement('canvas');
   canvas.width = sw;
@@ -41,7 +65,6 @@ export async function resizeImageForApi(dataUrl: string, maxSize = 2048): Promis
       canvas.height = h;
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0, w, h);
-      // Use JPEG at 0.8 quality to keep payload under edge function limits
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
     img.src = dataUrl;
