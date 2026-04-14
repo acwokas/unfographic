@@ -115,16 +115,16 @@ export async function generatePptx(
   }
 
   // Layer 2: Cover rectangles to hide original text behind editable text.
-  // Slightly expanded to ensure full coverage.
+  // Generously expanded to ensure full coverage of original text.
   const coverColors: Record<string, string> = {};
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
-        const expand = 0.05; // extra padding around cover (generous to hide original text)
+        const expand = 0.08; // generous padding to fully hide original text
         const cx = Math.max(0, el.x - expand);
         const cy = Math.max(0, el.y - expand);
-        const cw = el.w + expand * 2;
-        const ch = el.h + expand * 2;
+        const cw = Math.min(el.w + expand * 2, layout.slide.width - cx);
+        const ch = Math.min(el.h + expand * 2, layout.slide.height - cy);
         const coverColor = sampleRegionColor(
           originalImage, cx, cy, cw, ch,
           layout.slide.width, layout.slide.height
@@ -165,7 +165,7 @@ export async function generatePptx(
           y: el.y,
           w: el.w,
           h: el.h,
-          fontSize: el.fontSize,
+          fontSize: Math.max(5, Math.min(el.fontSize, 24)),
           fontFace: el.fontFace || 'Arial',
           color: textColor,
           bold: el.bold,
@@ -174,6 +174,7 @@ export async function generatePptx(
           valign: el.valign || 'top',
           margin: [0, 2, 0, 2],
           autoFit: true,
+          shrinkText: true,
         });
       } catch (e) {
         console.warn('Failed to add text element:', el.id, e);
