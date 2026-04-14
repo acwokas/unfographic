@@ -120,7 +120,7 @@ export async function generatePptx(
   for (const el of layout.elements) {
     if (el.type === 'text') {
       try {
-        const expand = 0.08; // generous padding to fully hide original text
+        const expand = 0.04; // moderate padding to hide original text
         const cx = Math.max(0, el.x - expand);
         const cy = Math.max(0, el.y - expand);
         const cw = Math.min(el.w + expand * 2, layout.slide.width - cx);

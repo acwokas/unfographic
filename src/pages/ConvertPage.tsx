@@ -6,7 +6,6 @@ import { useToast } from '@/hooks/use-toast';
 import { getJob, updateJob } from '@/lib/jobs';
 import { loadSettings } from '@/lib/settings';
 import { analyzeLayout } from '@/lib/analyze';
-import { runOCR, ocrToAIResponse } from '@/lib/ocr';
 import { resizeImageForApi, loadImage } from '@/lib/image-utils';
 import { generatePptx } from '@/lib/pptx-generator';
 import { buildSlideLayout } from '@/lib/layout-engine';
@@ -51,21 +50,41 @@ export default function ConvertPage() {
       const base64 = resized.split(',')[1];
       const img = await loadImage(job.imageDataUrl);
 
-      // Run OCR (precise text positions) and AI (image regions) in parallel
+      // Use AI vision model directly — it understands infographic layout far better than OCR
       const scale = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight));
-      const [ocrLines, aiResponse] = await Promise.all([
-        runOCR(job.imageDataUrl),
-        analyzeLayout(base64, settings, Math.round(img.naturalWidth * scale), Math.round(img.naturalHeight * scale)),
-      ]);
-
-      // Use OCR for text (precise bounding boxes) + AI for image regions only
-      const hybridResponse = ocrToAIResponse(
-        ocrLines,
-        img.naturalWidth,
-        img.naturalHeight,
-        aiResponse.imageRegions,
+      const aiResponse = await analyzeLayout(
+        base64, settings,
+        Math.round(img.naturalWidth * scale),
+        Math.round(img.naturalHeight * scale),
       );
-      const layout = buildSlideLayout(hybridResponse, img);
+
+      // Scale AI bounding boxes back to original image dimensions if AI worked on scaled image
+      const aiImgW = aiResponse.imageWidth || Math.round(img.naturalWidth * scale);
+      const aiImgH = aiResponse.imageHeight || Math.round(img.naturalHeight * scale);
+      const bboxScaleX = img.naturalWidth / aiImgW;
+      const bboxScaleY = img.naturalHeight / aiImgH;
+
+      // Rescale all bounding boxes from AI coordinate space to original image pixels
+      for (const tb of (aiResponse.textBlocks || [])) {
+        if (tb.boundingBox) {
+          tb.boundingBox.x = Math.round(tb.boundingBox.x * bboxScaleX);
+          tb.boundingBox.y = Math.round(tb.boundingBox.y * bboxScaleY);
+          tb.boundingBox.width = Math.round(tb.boundingBox.width * bboxScaleX);
+          tb.boundingBox.height = Math.round(tb.boundingBox.height * bboxScaleY);
+        }
+      }
+      for (const ir of (aiResponse.imageRegions || [])) {
+        ir.cropBox.x = Math.round(ir.cropBox.x * bboxScaleX);
+        ir.cropBox.y = Math.round(ir.cropBox.y * bboxScaleY);
+        ir.cropBox.width = Math.round(ir.cropBox.width * bboxScaleX);
+        ir.cropBox.height = Math.round(ir.cropBox.height * bboxScaleY);
+      }
+
+      // Set correct image dimensions for layout engine
+      aiResponse.imageWidth = img.naturalWidth;
+      aiResponse.imageHeight = img.naturalHeight;
+
+      const layout = buildSlideLayout(aiResponse, img);
 
       updateJob(id, { status: 'ready', layout, originalImage: img });
       setJob((prev) => prev ? { ...prev, status: 'ready', layout, originalImage: img } : prev);
