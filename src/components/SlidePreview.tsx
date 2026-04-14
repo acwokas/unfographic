@@ -92,11 +92,9 @@ export default function SlidePreview({
   return (
     <div
       ref={canvasRef}
-      className="relative rounded-xl overflow-hidden border border-border mx-auto"
+      className="relative rounded-xl overflow-hidden border border-border mx-auto w-full"
       style={{
-        width: '100%',
         maxHeight: '65vh',
-        maxWidth: `${(65 * slideW) / slideH}vh`,
         aspectRatio: `${slideW} / ${slideH}`,
         backgroundImage: `url(${backgroundUrl})`,
         backgroundSize: '100% 100%',
