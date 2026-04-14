@@ -1,16 +1,22 @@
 export function cropImageRegion(
   img: HTMLImageElement,
-  cropBox: { x: number; y: number; width: number; height: number }
+  cropBox: { x: number; y: number; width: number; height: number },
+  paddingPct = 0.08
 ): string {
+  // Add padding around the crop box to avoid cutting off edges of icons/images
+  const padX = cropBox.width * paddingPct;
+  const padY = cropBox.height * paddingPct;
+
+  const sx = Math.max(0, cropBox.x - padX);
+  const sy = Math.max(0, cropBox.y - padY);
+  const sw = Math.min(img.naturalWidth - sx, cropBox.width + padX * 2);
+  const sh = Math.min(img.naturalHeight - sy, cropBox.height + padY * 2);
+
   const canvas = document.createElement('canvas');
-  canvas.width = cropBox.width;
-  canvas.height = cropBox.height;
+  canvas.width = sw;
+  canvas.height = sh;
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(
-    img,
-    cropBox.x, cropBox.y, cropBox.width, cropBox.height,
-    0, 0, cropBox.width, cropBox.height
-  );
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
   return canvas.toDataURL('image/png');
 }
 
