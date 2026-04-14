@@ -196,7 +196,7 @@ export default function ConvertPage() {
                 className="relative w-full rounded-xl overflow-hidden border border-border"
                 style={{
                   aspectRatio: `${slideW} / ${slideH}`,
-                  backgroundImage: `url(${job.imageDataUrl})`,
+                  backgroundImage: `url(${job.cleanBgDataUrl || job.imageDataUrl})`,
                   backgroundSize: '100% 100%',
                   backgroundPosition: 'center',
                   backgroundRepeat: 'no-repeat',
