@@ -193,8 +193,11 @@ export default function ConvertPage() {
             {job.status === 'ready' && job.layout && (
               <div
                 ref={canvasRef}
-                className="relative w-full rounded-xl overflow-hidden border border-border"
+                className="relative rounded-xl overflow-hidden border border-border mx-auto"
                 style={{
+                  width: '100%',
+                  maxHeight: '65vh',
+                  maxWidth: `${(65 * slideW) / slideH}vh`,
                   aspectRatio: `${slideW} / ${slideH}`,
                   backgroundImage: `url(${job.cleanBgDataUrl || job.imageDataUrl})`,
                   backgroundSize: '100% 100%',
