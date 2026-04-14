@@ -126,4 +126,37 @@ describe('layout refinement', () => {
     expect(refined.imageRegions[0].cropBox.width).toBeCloseTo(40, 2);
     expect(refined.imageRegions[0].cropBox.height).toBeCloseTo(20, 2);
   });
+
+  it('prefers a single-line OCR candidate over a merged multi-line block', () => {
+    const matches = matchTextBlocksToOCR(
+      [
+        {
+          id: 'text-cpgs-want-more',
+          content: 'CPGs want more: better insights, better targeting, and better measurement.',
+          type: 'body',
+          positionHint: 'left',
+          section: 'main',
+          fontColor: '444444',
+          bold: false,
+          size: 'medium',
+          boundingBox: { x: 70, y: 180, width: 600, height: 40 },
+        },
+      ],
+      [
+        {
+          text: 'CPGs want more: better insights, better targeting, and better measurement.',
+          bbox: { x: 72, y: 181, width: 596, height: 39 },
+          confidence: 96,
+        },
+        {
+          text: 'CPGs want more: better insights, better targeting, and better measurement.\nPrivacy changes mean traditional ID-based targeting is disappearing.',
+          bbox: { x: 72, y: 181, width: 598, height: 84 },
+          confidence: 96,
+        },
+      ],
+    );
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0].ocrBox.height).toBe(39);
+  });
 });

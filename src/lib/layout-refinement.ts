@@ -88,12 +88,42 @@ export function scaleAIResponseToImage(
 export function matchTextBlocksToOCR(textBlocks: AITextBlock[], ocrLines: OCRLine[]): TextMatch[] {
   const candidatePairs: TextMatch[] = [];
 
+  const countLines = (value: string) => Math.max(1, value.split(/\n+/).filter(Boolean).length);
+  const sizeSimilarity = (a: number, b: number) => clamp(Math.min(a, b) / Math.max(a, b, 1), 0.2, 1);
+  const geometrySimilarity = (a: Box, b: Box) => {
+    const widthScore = sizeSimilarity(a.width, b.width);
+    const heightScore = sizeSimilarity(a.height, b.height);
+
+    const aCenterX = a.x + a.width / 2;
+    const aCenterY = a.y + a.height / 2;
+    const bCenterX = b.x + b.width / 2;
+    const bCenterY = b.y + b.height / 2;
+    const centerDistance = Math.hypot(aCenterX - bCenterX, aCenterY - bCenterY);
+    const distanceLimit = Math.max(24, Math.max(a.width, a.height, b.width, b.height) * 1.25);
+    const positionScore = clamp(1 - centerDistance / distanceLimit, 0.2, 1);
+
+    return widthScore * 0.35 + heightScore * 0.4 + positionScore * 0.25;
+  };
+  const lineCountPenalty = (aiLines: number, ocrLinesCount: number) => {
+    if (aiLines === ocrLinesCount) return 1;
+    if (aiLines === 1 && ocrLinesCount > 1) return 0.55;
+    const diff = Math.abs(aiLines - ocrLinesCount);
+    return diff === 1 ? 0.85 : 0.65;
+  };
+
   textBlocks.forEach((textBlock, blockIndex) => {
     if (!textBlock.boundingBox) return;
+    const aiLineCount = countLines(textBlock.content);
 
     ocrLines.forEach((ocrLine, candidateIndex) => {
-      const score = textSimilarity(textBlock.content, ocrLine.text);
-      if (score < MIN_MATCH_SCORE) return;
+      const textScore = textSimilarity(textBlock.content, ocrLine.text);
+      if (textScore < MIN_MATCH_SCORE) return;
+
+      const score = textScore
+        * geometrySimilarity(textBlock.boundingBox!, ocrLine.bbox)
+        * lineCountPenalty(aiLineCount, countLines(ocrLine.text));
+
+      if (score < 0.45) return;
 
       candidatePairs.push({
         blockIndex,
