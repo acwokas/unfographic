@@ -106,7 +106,11 @@ export default function SlidePreview({
         setEditingId(null);
       }}
     >
-      {layout.elements.map((el) => {
+      {/* Render image regions first, then text on top for correct z-ordering */}
+      {[...layout.elements].sort((a, b) => {
+        const order = { image_region: 0, text: 1 };
+        return (order[a.type] ?? 0) - (order[b.type] ?? 0);
+      }).map((el) => {
         const left = `${(el.x / slideW) * 100}%`;
         const top = `${(el.y / slideH) * 100}%`;
         const width = `${(el.w / slideW) * 100}%`;

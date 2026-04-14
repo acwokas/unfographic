@@ -212,10 +212,15 @@ function resolveCollisions(els: LayoutElement[]): void {
   }
 
   // Phase 1: Handle anchored-vs-anchored overlaps
+  // IMPORTANT: Never trim or remove text elements that overlap with image regions.
+  // Text should simply layer on top of images in the preview (z-order handles this).
   for (let i = 0; i < els.length; i++) {
     for (let j = i + 1; j < els.length; j++) {
       if (!overlaps(els[i], els[j])) continue;
       if (!isAnchored(els[i]) || !isAnchored(els[j])) continue;
+
+      // Skip if one is text and one is image — they can coexist (text renders on top)
+      if (els[i].type !== els[j].type) continue;
 
       const aArea = els[i].w * els[i].h;
       const bArea = els[j].w * els[j].h;
@@ -225,6 +230,7 @@ function resolveCollisions(els: LayoutElement[]): void {
       const oArea = overlapArea(smaller, larger);
       const pct = oArea / (smaller.w * smaller.h);
 
+      // Only remove if same-type elements overlap heavily
       if (pct > 0.5) {
         els.splice(els.indexOf(smaller), 1);
         if (j > i) j--;
