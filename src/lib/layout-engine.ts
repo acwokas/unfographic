@@ -71,8 +71,8 @@ export function buildSlideLayout(
       h = t.boundingBox.height * scaleY;
 
       // Enforce reasonable minimums
-      w = Math.max(w, 0.3);
-      h = Math.max(h, 0.12);
+      w = Math.max(w, 0.05);
+      h = Math.max(h, 0.05);
 
       // Derive font size from bounding box height (inches -> points)
       // For multi-line blocks (text with \n), divide height by line count
@@ -92,14 +92,6 @@ export function buildSlideLayout(
         const fittedFs = Math.floor((w / (longestLine.length * 0.52)) * 72);
         fs = Math.max(5, Math.min(fs, fittedFs));
       }
-
-      // Minimal padding — trust the AI bounding boxes
-      const padX = 0.01;
-      const padY = 0.005;
-      x = Math.max(0, x - padX);
-      y = Math.max(0, y - padY);
-      w = w + padX * 2;
-      h = h + padY * 2;
 
       anchored = true;
     } else {
@@ -148,13 +140,11 @@ export function buildSlideLayout(
     let w = r.cropBox.width * scaleX;
     let h = r.cropBox.height * scaleY;
 
-    w = Math.max(w, 0.4);
-    h = Math.max(h, 0.35);
-    w = Math.min(w, SLIDE_W - MARGIN * 2);
-    h = Math.min(h, SLIDE_H - 0.1);
+    w = Math.max(w, 0.05);
+    h = Math.max(h, 0.05);
 
-    x = Math.max(MARGIN, Math.min(x, SLIDE_W - w - MARGIN));
-    y = Math.max(0.05, Math.min(y, SLIDE_H - h - 0.05));
+    x = Math.max(0, Math.min(x, SLIDE_W - w));
+    y = Math.max(0, Math.min(y, SLIDE_H - h));
 
     const origScaleX = originalImage.naturalWidth / imgW;
     const origScaleY = originalImage.naturalHeight / imgH;
@@ -183,7 +173,9 @@ export function buildSlideLayout(
     });
   }
 
-  resolveCollisions(elements);
+  if (elements.some((el) => !(el as { anchored?: boolean }).anchored)) {
+    resolveCollisions(elements);
+  }
 
   return {
     slide: { width: SLIDE_W, height: SLIDE_H, backgroundColor: 'FFFFFF' },
