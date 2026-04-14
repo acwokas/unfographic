@@ -241,9 +241,8 @@ export default function ConvertPage() {
                         className={`absolute group ${isSelected ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-primary/40'}`}
                         style={{
                           left, top, width, height,
-                          backgroundColor: 'rgba(255, 255, 255, 0.92)',
                           borderRadius: '2px',
-                          padding: '1px 3px',
+                          padding: '0px 1px',
                         }}
                         onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); if (editingId !== el.id) setEditingId(null); }}
                         onDoubleClick={(e) => { e.stopPropagation(); setEditingId(el.id); }}
