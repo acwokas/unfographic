@@ -73,16 +73,16 @@ export async function runOCR(imageDataUrl: string): Promise<OCRLine[]> {
     // Sort words left-to-right within cluster
     cluster.sort((a, b) => a.bbox.x - b.bbox.x);
 
-    // Smart joining: if gap between adjacent words is tiny, join without space
-    // (they're fragments of the same word broken by OCR)
+    // Join words with spaces. Only omit space when words literally overlap
+    // (negative gap means OCR split a single word into fragments).
     let text = cluster[0]?.text || '';
     for (let k = 1; k < cluster.length; k++) {
       const prev = cluster[k - 1];
       const curr = cluster[k];
       const gap = curr.bbox.x - (prev.bbox.x + prev.bbox.width);
-      const avgCharW = (prev.bbox.width / Math.max(prev.text.length, 1)
-                      + curr.bbox.width / Math.max(curr.text.length, 1)) / 2;
-      text += (gap < avgCharW * 0.6) ? '' : ' ';
+      // Only merge without space if words physically overlap (negative gap)
+      // meaning OCR broke one word into two fragments
+      text += (gap < -1) ? '' : ' ';
       text += curr.text;
     }
     const minX = Math.min(...cluster.map(w => w.bbox.x));
@@ -192,10 +192,9 @@ function areWordsNearby(a: OCRWord, b: OCRWord): boolean {
   const bRight = b.bbox.x + b.bbox.width;
   const hGap = Math.max(0, Math.max(a.bbox.x, b.bbox.x) - Math.min(aRight, bRight));
 
-  // Max allowed gap scales with character height (roughly 2x char height)
-  // This allows normal word spacing but prevents merging distant regions
+  // Max allowed gap: ~1.5x char height to prevent merging distant regions
   const avgHeight = (a.bbox.height + b.bbox.height) / 2;
-  const maxGap = avgHeight * 2.5;
+  const maxGap = avgHeight * 1.5;
 
   return hGap <= maxGap;
 }
