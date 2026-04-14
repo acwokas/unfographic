@@ -93,11 +93,11 @@ export function buildSlideLayout(
         fs = Math.max(5, Math.min(fs, fittedFs));
       }
 
-      // Small padding to cover original text
-      const padX = 0.03;
-      const padY = 0.015;
-      x = Math.max(MARGIN, x - padX);
-      y = Math.max(0.05, y - padY);
+      // Minimal padding — trust the AI bounding boxes
+      const padX = 0.01;
+      const padY = 0.005;
+      x = Math.max(0, x - padX);
+      y = Math.max(0, y - padY);
       w = w + padX * 2;
       h = h + padY * 2;
 
