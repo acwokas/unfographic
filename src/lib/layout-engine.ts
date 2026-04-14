@@ -79,8 +79,8 @@ export function buildSlideLayout(
       // so font size reflects a single line, not the full merged block.
       const lineCount = (t.content.match(/\n/g) || []).length + 1;
       const lineH = h / lineCount;
-      fs = Math.round(lineH * 72 * 0.80);
-      fs = Math.max(5, Math.min(fs, 28));
+      fs = Math.round(lineH * 72 * 0.70);
+      fs = Math.max(5, Math.min(fs, 22));
 
       // Estimate if text fits in one line at this font size.
       // Average char width in Arial â 0.52 Ã font size (points) / 72 (inches)
