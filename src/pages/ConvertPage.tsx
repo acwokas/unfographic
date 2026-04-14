@@ -8,6 +8,7 @@ import { loadSettings } from '@/lib/settings';
 import { analyzeLayout } from '@/lib/analyze';
 import { resizeImageForApi, loadImage } from '@/lib/image-utils';
 import { createCleanBackground } from '@/lib/inpaint';
+import { refineAIResponseWithOCR } from '@/lib/layout-refinement';
 import { generatePptx } from '@/lib/pptx-generator';
 import { buildSlideLayout } from '@/lib/layout-engine';
 import { ConversionJob } from '@/types/layout';
@@ -46,31 +47,13 @@ export default function ConvertPage() {
         Math.round(img.naturalHeight * scale),
       );
 
-      const aiImgW = aiResponse.imageWidth || Math.round(img.naturalWidth * scale);
-      const aiImgH = aiResponse.imageHeight || Math.round(img.naturalHeight * scale);
-      const bboxScaleX = img.naturalWidth / aiImgW;
-      const bboxScaleY = img.naturalHeight / aiImgH;
+      const refinedResponse = await refineAIResponseWithOCR(job.imageDataUrl, aiResponse, {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
 
-      for (const tb of (aiResponse.textBlocks || [])) {
-        if (tb.boundingBox) {
-          tb.boundingBox.x = Math.round(tb.boundingBox.x * bboxScaleX);
-          tb.boundingBox.y = Math.round(tb.boundingBox.y * bboxScaleY);
-          tb.boundingBox.width = Math.round(tb.boundingBox.width * bboxScaleX);
-          tb.boundingBox.height = Math.round(tb.boundingBox.height * bboxScaleY);
-        }
-      }
-      for (const ir of (aiResponse.imageRegions || [])) {
-        ir.cropBox.x = Math.round(ir.cropBox.x * bboxScaleX);
-        ir.cropBox.y = Math.round(ir.cropBox.y * bboxScaleY);
-        ir.cropBox.width = Math.round(ir.cropBox.width * bboxScaleX);
-        ir.cropBox.height = Math.round(ir.cropBox.height * bboxScaleY);
-      }
-
-      aiResponse.imageWidth = img.naturalWidth;
-      aiResponse.imageHeight = img.naturalHeight;
-
-      const layout = buildSlideLayout(aiResponse, img);
-      const cleanBgDataUrl = createCleanBackground(img, aiResponse.textBlocks || []);
+      const layout = buildSlideLayout(refinedResponse, img);
+      const cleanBgDataUrl = createCleanBackground(img, refinedResponse.textBlocks || []);
 
       updateJob(id, { status: 'ready', layout, originalImage: img, cleanBgDataUrl });
       setJob((prev) => prev ? { ...prev, status: 'ready', layout, originalImage: img, cleanBgDataUrl } : prev);

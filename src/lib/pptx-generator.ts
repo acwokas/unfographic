@@ -124,7 +124,7 @@ export async function generatePptx(
           italic: el.italic,
           align: el.align,
           valign: el.valign || 'top',
-          margin: [0, 1, 0, 1],
+          margin: 0,
           autoFit: true,
           shrinkText: true,
         });
