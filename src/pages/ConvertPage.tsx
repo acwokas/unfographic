@@ -7,6 +7,7 @@ import { getJob, updateJob } from '@/lib/jobs';
 import { loadSettings } from '@/lib/settings';
 import { analyzeLayout } from '@/lib/analyze';
 import { resizeImageForApi, loadImage } from '@/lib/image-utils';
+import { createCleanBackground } from '@/lib/inpaint';
 import { generatePptx } from '@/lib/pptx-generator';
 import { buildSlideLayout } from '@/lib/layout-engine';
 import { ConversionJob, LayoutElement } from '@/types/layout';
@@ -86,8 +87,11 @@ export default function ConvertPage() {
 
       const layout = buildSlideLayout(aiResponse, img);
 
-      updateJob(id, { status: 'ready', layout, originalImage: img });
-      setJob((prev) => prev ? { ...prev, status: 'ready', layout, originalImage: img } : prev);
+      // Create clean background by painting over text regions
+      const cleanBgDataUrl = createCleanBackground(img, aiResponse.textBlocks || []);
+
+      updateJob(id, { status: 'ready', layout, originalImage: img, cleanBgDataUrl });
+      setJob((prev) => prev ? { ...prev, status: 'ready', layout, originalImage: img, cleanBgDataUrl } : prev);
     } catch (e: any) {
       updateJob(id, { status: 'error', error: e.message });
       setJob((prev) => prev ? { ...prev, status: 'error', error: e.message } : prev);
@@ -117,7 +121,7 @@ export default function ConvertPage() {
   const handleDownload = async () => {
     if (!job?.layout || !job.originalImage) return;
     try {
-      await generatePptx(job.layout, job.originalImage, 'unfographic-export.pptx');
+      await generatePptx(job.layout, job.originalImage, 'unfographic-export.pptx', job.cleanBgDataUrl);
       toast({ title: 'All done. Your slides are free now.' });
     } catch (e: any) {
       toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
