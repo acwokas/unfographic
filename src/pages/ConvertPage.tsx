@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getJob, updateJob } from '@/lib/jobs';
@@ -10,8 +10,9 @@ import { resizeImageForApi, loadImage } from '@/lib/image-utils';
 import { createCleanBackground } from '@/lib/inpaint';
 import { generatePptx } from '@/lib/pptx-generator';
 import { buildSlideLayout } from '@/lib/layout-engine';
-import { ConversionJob, LayoutElement } from '@/types/layout';
+import { ConversionJob } from '@/types/layout';
 import Logo from '@/components/Logo';
+import SlidePreview from '@/components/SlidePreview';
 
 export default function ConvertPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,19 +20,6 @@ export default function ConvertPage() {
   const { toast } = useToast();
 
   const [job, setJob] = useState<ConversionJob | undefined>(id ? getJob(id) : undefined);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [canvasWidth, setCanvasWidth] = useState(800);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) setCanvasWidth(entry.contentRect.width);
-    });
-    observer.observe(canvasRef.current);
-    return () => observer.disconnect();
-  }, [job?.status]);
 
   useEffect(() => {
     if (!job) { navigate('/'); return; }
@@ -51,7 +39,6 @@ export default function ConvertPage() {
       const base64 = resized.split(',')[1];
       const img = await loadImage(job.imageDataUrl);
 
-      // Use AI vision model directly — it understands infographic layout far better than OCR
       const scale = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight));
       const aiResponse = await analyzeLayout(
         base64, settings,
@@ -59,13 +46,11 @@ export default function ConvertPage() {
         Math.round(img.naturalHeight * scale),
       );
 
-      // Scale AI bounding boxes back to original image dimensions if AI worked on scaled image
       const aiImgW = aiResponse.imageWidth || Math.round(img.naturalWidth * scale);
       const aiImgH = aiResponse.imageHeight || Math.round(img.naturalHeight * scale);
       const bboxScaleX = img.naturalWidth / aiImgW;
       const bboxScaleY = img.naturalHeight / aiImgH;
 
-      // Rescale all bounding boxes from AI coordinate space to original image pixels
       for (const tb of (aiResponse.textBlocks || [])) {
         if (tb.boundingBox) {
           tb.boundingBox.x = Math.round(tb.boundingBox.x * bboxScaleX);
@@ -81,13 +66,10 @@ export default function ConvertPage() {
         ir.cropBox.height = Math.round(ir.cropBox.height * bboxScaleY);
       }
 
-      // Set correct image dimensions for layout engine
       aiResponse.imageWidth = img.naturalWidth;
       aiResponse.imageHeight = img.naturalHeight;
 
       const layout = buildSlideLayout(aiResponse, img);
-
-      // Create clean background by painting over text regions
       const cleanBgDataUrl = createCleanBackground(img, aiResponse.textBlocks || []);
 
       updateJob(id, { status: 'ready', layout, originalImage: img, cleanBgDataUrl });
@@ -105,7 +87,6 @@ export default function ConvertPage() {
     const newLayout = { ...job.layout, elements: newElements };
     updateJob(id, { layout: newLayout });
     setJob((prev) => prev ? { ...prev, layout: newLayout } : prev);
-    if (selectedId === elId) setSelectedId(null);
   };
 
   const handleEditText = (elId: string, newContent: string) => {
@@ -118,8 +99,20 @@ export default function ConvertPage() {
     setJob((prev) => prev ? { ...prev, layout: newLayout } : prev);
   };
 
+  const handleMoveElement = useCallback((elId: string, newX: number, newY: number) => {
+    if (!job?.layout || !id) return;
+    const newElements = job.layout.elements.map((el) =>
+      el.id === elId ? { ...el, x: newX, y: newY } : el
+    );
+    const newLayout = { ...job.layout, elements: newElements };
+    // Update state only (don't persist every mousemove)
+    setJob((prev) => prev ? { ...prev, layout: newLayout } : prev);
+  }, [job?.layout, id]);
+
   const handleDownload = async () => {
     if (!job?.layout || !job.originalImage) return;
+    // Persist latest positions before download
+    if (id && job.layout) updateJob(id, { layout: job.layout });
     try {
       await generatePptx(job.layout, job.originalImage, 'unfographic-export.pptx', job.cleanBgDataUrl);
       toast({ title: 'All done. Your slides are free now.' });
@@ -129,10 +122,6 @@ export default function ConvertPage() {
   };
 
   if (!job) return null;
-
-  const slideW = job.layout?.slide.width || 10;
-  const slideH = job.layout?.slide.height || 5.625;
-  const fontScale = canvasWidth / (slideW * 72);
 
   const textCount = job.layout?.elements.filter(el => el.type === 'text').length || 0;
   const imageCount = job.layout?.elements.filter(el => el.type === 'image_region').length || 0;
@@ -164,7 +153,7 @@ export default function ConvertPage() {
             </h2>
             {job.layout && (
               <span className="text-xs text-muted-foreground font-light">
-                {textCount} text \u00b7 {imageCount} images
+                {textCount} text · {imageCount} images · drag to reposition
               </span>
             )}
           </div>
@@ -173,7 +162,7 @@ export default function ConvertPage() {
             {job.status === 'analyzing' && (
               <div className="flex flex-col items-center gap-4">
                 <div className="h-12 w-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <p className="text-muted-foreground font-light">Deconstructing\u2026 extracting every element.</p>
+                <p className="text-muted-foreground font-light">Deconstructing… extracting every element.</p>
               </div>
             )}
 
@@ -191,108 +180,13 @@ export default function ConvertPage() {
             )}
 
             {job.status === 'ready' && job.layout && (
-              <div
-                ref={canvasRef}
-                className="relative rounded-xl overflow-hidden border border-border mx-auto"
-                style={{
-                  width: '100%',
-                  maxHeight: '65vh',
-                  maxWidth: `${(65 * slideW) / slideH}vh`,
-                  aspectRatio: `${slideW} / ${slideH}`,
-                  backgroundImage: `url(${job.cleanBgDataUrl || job.imageDataUrl})`,
-                  backgroundSize: '100% 100%',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                }}
-                onClick={() => { setSelectedId(null); setEditingId(null); }}
-              >
-                {job.layout.elements.map((el) => {
-                  const left = `${(el.x / slideW) * 100}%`;
-                  const top = `${(el.y / slideH) * 100}%`;
-                  const width = `${(el.w / slideW) * 100}%`;
-                  const height = `${(el.h / slideH) * 100}%`;
-                  const isSelected = selectedId === el.id;
-                  const isEditing = editingId === el.id;
-
-                  if (el.type === 'image_region') {
-                    return (
-                      <div
-                        key={el.id}
-                        className={`absolute group ${isSelected ? 'ring-2 ring-primary' : 'hover:ring-2 hover:ring-primary/40'}`}
-                        style={{ left, top, width, height }}
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); }}
-                      >
-                        {el.croppedDataUrl ? (
-                          <img src={el.croppedDataUrl} alt={el.description} className="w-full h-full object-contain" draggable={false} />
-                        ) : (
-                          <div className="w-full h-full bg-muted/70 flex items-center justify-center text-xs text-muted-foreground p-1 text-center rounded">
-                            {el.description}
-                          </div>
-                        )}
-                        <button
-                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground hidden group-hover:flex items-center justify-center text-xs z-10"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(el.id); }}
-                        ><X className="h-3 w-3" /></button>
-                      </div>
-                    );
-                  }
-
-                  if (el.type === 'text') {
-                    return (
-                      <div
-                        key={el.id}
-                        className={`absolute group ${isSelected ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-primary/40'}`}
-                        style={{
-                          left, top, width, height,
-                          borderRadius: '2px',
-                          padding: '0px 1px',
-                        }}
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(el.id); if (editingId !== el.id) setEditingId(null); }}
-                        onDoubleClick={(e) => { e.stopPropagation(); setEditingId(el.id); }}
-                      >
-                        {!isEditing ? (
-                          <div
-                            className="w-full h-full overflow-hidden cursor-text"
-                            style={{
-                              fontSize: `${Math.max(6, el.fontSize * fontScale)}px`,
-                              fontWeight: el.bold ? 700 : 400,
-                              fontStyle: el.italic ? 'italic' : 'normal',
-                              color: `#${el.fontColor || '000'}`,
-                              textAlign: el.align,
-                              display: 'flex',
-                              alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',
-                              lineHeight: 1.2,
-                              wordBreak: 'break-word',
-                            }}
-                          >
-                            <span className="w-full">{el.content}</span>
-                          </div>
-                        ) : (
-                          <textarea
-                            autoFocus
-                            defaultValue={el.content}
-                            onBlur={(e) => { handleEditText(el.id, e.target.value); setEditingId(null); }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full h-full bg-white resize-none outline-none border-2 border-primary rounded"
-                            style={{
-                              fontSize: `${Math.max(6, el.fontSize * fontScale)}px`,
-                              fontWeight: el.bold ? 700 : 400,
-                              color: `#${el.fontColor || '000'}`,
-                              lineHeight: 1.2,
-                            }}
-                          />
-                        )}
-                        <button
-                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground hidden group-hover:flex items-center justify-center text-xs z-10"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(el.id); }}
-                        ><X className="h-3 w-3" /></button>
-                      </div>
-                    );
-                  }
-
-                  return null;
-                })}
-              </div>
+              <SlidePreview
+                layout={job.layout}
+                backgroundUrl={job.cleanBgDataUrl || job.imageDataUrl}
+                onDeleteElement={handleDelete}
+                onEditText={handleEditText}
+                onMoveElement={handleMoveElement}
+              />
             )}
           </div>
 
